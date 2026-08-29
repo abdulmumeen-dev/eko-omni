@@ -24,12 +24,14 @@ class PublicAPIConnector {
     } catch (err) {
       console.error('[Connectors] Failed to fetch APIs:', err.message);
       // Use fallback local list
-      return this.getFallbackAPIs();
+      this.apiCache = this.getFallbackAPIs();
+      return this.apiCache;
     }
   }
 
   // Filter APIs by category
   getAPIsByCategory(category) {
+    if (!this.apiCache) return [];
     return this.apiCache.filter(api => 
       api.Category && api.Category.toLowerCase() === category.toLowerCase()
     );
@@ -37,12 +39,14 @@ class PublicAPIConnector {
 
   // Get all unique categories
   getCategories() {
+    if (!this.apiCache) return [];
     const categories = this.apiCache.map(api => api.Category).filter(Boolean);
     return [...new Set(categories)];
   }
 
   // Search APIs by name or description
   searchAPIs(query) {
+    if (!this.apiCache) return [];
     const lower = query.toLowerCase();
     return this.apiCache.filter(api =>
       (api.API && api.API.toLowerCase().includes(lower)) ||
@@ -52,6 +56,7 @@ class PublicAPIConnector {
 
   // Get APIs by authentication type
   getAPIsByAuth(authType) {
+    if (!this.apiCache) return [];
     return this.apiCache.filter(api => api.Auth === authType);
   }
 
@@ -71,8 +76,8 @@ class PublicAPIConnector {
 
   // Get popular/categorized APIs
   getTopAPIs(limit = 20) {
+    if (!this.apiCache) return [];
     const sorted = [...this.apiCache].sort((a, b) => {
-      // Prioritize APIs with HTTPS and no auth
       const scoreA = (a.HTTPS ? 2 : 0) + (a.Auth === '' ? 1 : 0);
       const scoreB = (b.HTTPS ? 2 : 0) + (b.Auth === '' ? 1 : 0);
       return scoreB - scoreA;
@@ -92,7 +97,7 @@ class PublicAPIConnector {
 
   getStats() {
     return {
-      total: this.apiCache.length,
+      total: this.apiCache ? this.apiCache.length : 0,
       categories: this.getCategories().length,
       lastFetch: this.lastFetch
     };
