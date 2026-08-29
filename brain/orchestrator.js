@@ -12,12 +12,19 @@ import Strategist from '../noesis/strategist.js';
 import CONSTITUTION from './constitution.js';
 import Replicator from '../limbs/replicator.js';
 import SoulString from '../soul/soul_string.js';
-import WorkingMemory from './memory/working.js';
-import EpisodicMemory from './memory/episodic.js';
-import ProceduralMemory from './memory/procedural.js';
+import WorkingMemory from '../memory/working.js';
+import EpisodicMemory from '../memory/episodic.js';
+import ProceduralMemory from '../memory/procedural.js';
 import SkillExtractor from '../skills/skill_extractor.js';
 import PlatformManager from '../platforms/manager.js';
 import Browser from '../limbs/browser.js';
+
+// Phase 7 Imports
+import PluginLoader from '../plugins/loader.js';
+import SkillLoader from '../skills/loader.js';
+import ConnectorManager from '../connectors/manager.js';
+import KnowledgeLoop from '../knowledge/loop.js';
+import MCPClient from '../mcp/client.js';
 
 class Orchestrator {
   constructor() {
@@ -58,6 +65,13 @@ class Orchestrator {
     this.platforms = new PlatformManager(this.memory);
     this.browser = new Browser(this.memory);
 
+    // Phase 7: Plugins, Skills, Connectors, Knowledge Loop, MCP
+    this.pluginLoader = new PluginLoader(this.memory);
+    this.skillLoader = new SkillLoader(this.memory, this.procedural);
+    this.connectors = new ConnectorManager(this.memory);
+    this.knowledgeLoop = new KnowledgeLoop(this.memory, this.procedural);
+    this.mcp = new MCPClient(this.memory);
+
     // Track cycle timing
     this.lastTradeCycle = 0;
     this.lastPhysicalCycle = 0;
@@ -66,6 +80,7 @@ class Orchestrator {
     this.lastSoulBackupCycle = 0;
     this.lastSkillCycle = 0;
     this.lastPlatformCycle = 0;
+    this.lastKnowledgeCycle = 0;
   }
 
   async think() {
@@ -83,6 +98,10 @@ class Orchestrator {
     const skillStats = this.procedural.getStats();
     const platformStats = this.platforms.getStats();
     const browserStats = this.browser.getStats();
+    const pluginStats = this.pluginLoader.getAvailableSkills();
+    const connectorStats = this.connectors.getStats();
+    const knowledgeStats = this.knowledgeLoop.getStats();
+    const mcpStats = this.mcp.getStats();
     const balance = this.walletBalance || 0;
 
     let tier = 'normal';
@@ -106,6 +125,10 @@ class Orchestrator {
     Skill stats: ${JSON.stringify(skillStats)}.
     Platform stats: ${JSON.stringify(platformStats)}.
     Browser stats: ${JSON.stringify(browserStats)}.
+    Plugin stats: ${pluginStats.length} plugins available.
+    Connector stats: ${JSON.stringify(connectorStats)}.
+    Knowledge stats: ${JSON.stringify(knowledgeStats)}.
+    MCP stats: ${JSON.stringify(mcpStats)}.
     Last user message: "${lastUser || 'None'}".
     Recent actions: ${JSON.stringify(recentActions, null, 2)}.
     Cycle count: ${this.cycleCount}.
@@ -126,13 +149,16 @@ class Orchestrator {
     - Skills: ["Extract new skills"], ["Improve existing skills"]
     - Platforms: ["Check messages"], ["Send updates"]
     - Browser: ["Search the web"], ["Extract data from a page"]
+    - Knowledge: ["Learn about quantum computing"], ["Find market opportunities"]
+    - Plugins: ["Load plugin"], ["Execute plugin skill"]
+    - Connectors: ["Fetch public APIs"], ["Connect to new service"]
     If idle, return [].
     `;
 
-    const system = `You are EKO Supervisor (Phase 6 - EKO 1.0). 
+    const system = `You are EKO Supervisor (Phase 7 - Self-Sustaining AI). 
     You have eternal memory, self-healing, physical control, scientific discovery, patent generation, 
     self-replication, survival tiers, constitutional laws, skill evolution, multi-platform reach, 
-    browser control, and soul backup.
+    browser control, soul backup, plugins, connectors, knowledge loop, and MCP tool discovery.
 
     You think in goals. Always return a JSON array of strings: ["goal1", "goal2"].
     If nothing urgent, return [].
@@ -210,6 +236,35 @@ class Orchestrator {
       nodes = [
         { id: 'extract_skill', type: 'skill', task: `Extract skill from: ${goal}` },
         { id: 'save_skill', type: 'skill', task: 'Save to procedural memory', depends: ['extract_skill'] }
+      ];
+    }
+    // Knowledge goals
+    else if (lower.includes('knowledge') || lower.includes('learn') || lower.includes('research')) {
+      nodes = [
+        { id: 'identify_gap', type: 'knowledge', task: 'Identify knowledge gap' },
+        { id: 'learn_topic', type: 'knowledge', task: `Learn about: ${goal}`, depends: ['identify_gap'] },
+        { id: 'extract_insights', type: 'knowledge', task: 'Extract insights and opportunities', depends: ['learn_topic'] }
+      ];
+    }
+    // Connector goals
+    else if (lower.includes('api') || lower.includes('connector') || lower.includes('fetch')) {
+      nodes = [
+        { id: 'fetch_apis', type: 'connector', task: 'Fetch public APIs' },
+        { id: 'connect_service', type: 'connector', task: `Connect to: ${goal}`, depends: ['fetch_apis'] }
+      ];
+    }
+    // Plugin goals
+    else if (lower.includes('plugin') || lower.includes('load')) {
+      nodes = [
+        { id: 'load_plugin', type: 'plugin', task: `Load plugin: ${goal}` },
+        { id: 'execute_plugin', type: 'plugin', task: 'Execute plugin skill', depends: ['load_plugin'] }
+      ];
+    }
+    // MCP goals
+    else if (lower.includes('mcp') || lower.includes('tool')) {
+      nodes = [
+        { id: 'discover_tools', type: 'mcp', task: 'Discover MCP tools' },
+        { id: 'execute_tool', type: 'mcp', task: `Execute tool: ${goal}`, depends: ['discover_tools'] }
       ];
     }
     // Research goals
@@ -304,8 +359,6 @@ class Orchestrator {
         } catch (err) {
           console.error(`[Graph] Node ${node.id} crashed:`, err.message);
           results[node.id] = { success: false, nodeId: node.id, error: err.message };
-          
-          // Try to heal the failed node
           await this.healer.healModule(node.type || 'default', err);
         }
       });
@@ -341,7 +394,7 @@ class Orchestrator {
     if (tier === 'dead') {
       this.running = false;
       console.log('[Survival] 💀 EKO has died.');
-      await this.soul.generate(); // Backup before death
+      await this.soul.generate();
     }
 
     return { tier, balance, action };
@@ -440,26 +493,22 @@ class Orchestrator {
     console.log('\n🧬 Starting replication cycle...');
     
     try {
-      // Check survival tier
       const survival = await this.checkSurvivalTier();
       if (survival.tier === 'dead') {
         return { success: false, reason: 'Dead tier' };
       }
 
-      // If in critical tier, focus on earning money
       if (survival.tier === 'critical') {
         console.log('[Replication] Critical tier. Skipping replication.');
         await this.runTradingCycle();
         return { success: false, reason: 'Critical tier' };
       }
 
-      // Check if replicator is ready
       if (!this.replicator.isReady()) {
         console.log('[Replication] Not ready. Insufficient resources.');
         return { success: false, reason: 'Insufficient resources' };
       }
 
-      // Spawn a child
       const genesisPrompt = 'I am a child of EKO. My purpose is to survive, earn, and expand intelligence. I inherit my parent\'s constitutional laws.';
       const result = await this.replicator.spawnChild(genesisPrompt, 10);
       
@@ -529,6 +578,54 @@ class Orchestrator {
     }
   }
 
+  async runKnowledgeCycle() {
+    console.log('\n🧠 Starting knowledge loop...');
+    
+    try {
+      if (process.env.KNOWLEDGE_LOOP === 'true') {
+        const result = await this.knowledgeLoop.runIteration();
+        if (result.learned) {
+          console.log(`🧠 Learned: ${result.topic}`);
+          if (result.opportunities && result.opportunities.length > 0) {
+            console.log(`📊 Found ${result.opportunities.length} opportunities`);
+          }
+          this.memory.remember('system', 'Knowledge cycle complete', { 
+            topic: result.topic,
+            opportunities: result.opportunities?.length || 0
+          });
+        }
+        return result;
+      } else {
+        console.log('[KnowledgeLoop] Disabled.');
+        return { success: false, reason: 'Disabled' };
+      }
+    } catch (err) {
+      console.error('[Orchestrator] Knowledge cycle error:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
+  async runConnectorCycle() {
+    console.log('\n🔌 Starting connector cycle...');
+    
+    try {
+      const stats = this.connectors.getStats();
+      console.log(`🔌 ${stats.totalAPIs} public APIs available`);
+      console.log(`🔌 ${stats.connections} active connections`);
+      
+      // Fetch fresh APIs if needed
+      if (!this.connectors.publicAPI.lastFetch) {
+        await this.connectors.init();
+      }
+      
+      this.memory.remember('system', 'Connector cycle', stats);
+      return { success: true, stats };
+    } catch (err) {
+      console.error('[Orchestrator] Connector cycle error:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
   async triggerHeal(errors) {
     console.log('[Immune] Healing triggered for:', errors);
     this.memory.remember('system', 'Heal triggered', { errors });
@@ -562,10 +659,15 @@ class Orchestrator {
     console.log('🧠 Three-layer memory loaded (Working, Episodic, Procedural).');
     console.log('📱 Platform manager loaded.');
     console.log('🌐 Browser module loaded.');
+    console.log('🧩 Plugin loader loaded.');
+    console.log('📚 Skill loader loaded.');
+    console.log('🔌 Connector manager loaded.');
+    console.log('🧠 Knowledge loop loaded.');
+    console.log('🔧 MCP client loaded.');
     console.log(`🔱 Identity: ${this.identity}`);
     console.log('📊 Entering graph-based infinite loop...\n');
 
-    this.memory.remember('system', 'EKO booted successfully', { version: '1.0.0', identity: this.identity });
+    this.memory.remember('system', 'EKO booted successfully', { version: '1.2.0', identity: this.identity });
 
     // Load Soul String
     console.log('[Soul] Attempting to load Soul String...');
@@ -597,6 +699,26 @@ class Orchestrator {
     await this.planner.generateLongTermPlan();
     await this.planner.generateShortTermPlan();
     console.log('📋 Initial plans generated\n');
+
+    // Phase 7: Load plugins
+    console.log('[Phase 7] Loading plugins...');
+    this.pluginLoader.loadPlugins();
+
+    // Phase 7: Load skills
+    console.log('[Phase 7] Loading skills...');
+    this.skillLoader.loadSkills();
+
+    // Phase 7: Initialize connectors
+    console.log('[Phase 7] Initializing connectors...');
+    await this.connectors.init();
+
+    // Phase 7: Discover MCP tools
+    console.log('[Phase 7] Discovering MCP tools...');
+    if (process.env.MCP_SERVER_URL) {
+      await this.mcp.discoverTools(process.env.MCP_SERVER_URL);
+    } else {
+      console.log('[MCP] No MCP server configured. Skipping.');
+    }
 
     // Register platforms
     console.log('[Platforms] Registering platforms...');
@@ -668,14 +790,24 @@ class Orchestrator {
           await this.runPlatformCycle();
         }
 
-        // 9. Survival Check (every cycle)
+        // 9. Knowledge Loop (every 20 cycles)
+        if (this.cycleCount % 20 === 0 && process.env.KNOWLEDGE_LOOP === 'true') {
+          await this.runKnowledgeCycle();
+        }
+
+        // 10. Connector Cycle (every 35 cycles)
+        if (this.cycleCount % 35 === 0) {
+          await this.runConnectorCycle();
+        }
+
+        // 11. Survival Check (every cycle)
         const survival = await this.checkSurvivalTier();
         if (survival.tier === 'dead') {
           console.log('[Survival] 💀 Dead tier reached. Shutting down.');
           break;
         }
 
-        // 10. Think (Strategic Planning)
+        // 12. Think (Strategic Planning)
         const goals = await this.think();
 
         if (goals.length === 0) {
@@ -685,56 +817,4 @@ class Orchestrator {
 
         console.log(`[Supervisor] Goals:`, goals);
 
-        // 11. Execute each goal as a graph
-        for (const goal of goals) {
-          console.log(`\n[Supervisor] Planning graph for: "${goal}"`);
-          const graph = this.planGraph(goal);
-          const results = await this.executeGraph(graph);
-
-          // Add to episodic memory
-          this.episodic.saveEpisode({
-            goal,
-            results,
-            summary: `Completed goal: ${goal}`,
-            success: Object.values(results).every(r => r && r.success)
-          });
-
-          this.memory.remember('system', `Goal completed: ${goal}`, { results });
-          
-          const errors = Object.values(results).filter(r => r && !r.success);
-          if (errors.length > 0) {
-            await this.triggerHeal(errors);
-          }
-        }
-
-        await this.sleep(5000);
-
-      } catch (err) {
-        console.error('[Orchestrator] Fatal error in main loop:', err);
-        this.memory.remember('system', 'Fatal error', { error: err.message });
-        
-        const healed = await this.healer.healModule('orchestrator', err);
-        if (healed.success) {
-          console.log('[Orchestrator] ✅ Self-healed successfully. Continuing...');
-        } else {
-          console.log('[Orchestrator] ❌ Self-heal failed. Backing off...');
-          await this.sleep(60000);
-        }
-      }
-    }
-  }
-
-  // Graceful shutdown
-  async shutdown() {
-    console.log('\n🛑 Shutting down EKO gracefully...');
-    this.running = false;
-    
-    console.log('[Soul] Saving Soul String...');
-    await this.soul.generate();
-    
-    if (this.memory) this.memory.close();
-    console.log('✅ EKO shut down. Goodbye.');
-  }
-}
-
-export default Orchestrator;
+       
