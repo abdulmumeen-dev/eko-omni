@@ -41,7 +41,8 @@ class MemoryManager {
       ORDER BY timestamp DESC 
       LIMIT ?
     `);
-    return stmt.all(limit).reverse();
+    const rows = stmt.all(limit);
+    return rows ? rows.reverse() : [];
   }
 
   search(term) {
@@ -51,7 +52,8 @@ class MemoryManager {
       ORDER BY timestamp DESC 
       LIMIT 50
     `);
-    return stmt.all(`%${term}%`);
+    const rows = stmt.all(`%${term}%`);
+    return rows || [];
   }
 
   getStats() {
@@ -63,7 +65,8 @@ class MemoryManager {
         SUM(CASE WHEN role = 'system' THEN 1 ELSE 0 END) as systemMsgs
       FROM memories
     `);
-    return stmt.get();
+    const result = stmt.get();
+    return result || { total: 0, userMsgs: 0, assistantMsgs: 0, systemMsgs: 0 };
   }
 
   getLastUserMessage() {
@@ -84,7 +87,8 @@ class MemoryManager {
       ORDER BY timestamp DESC 
       LIMIT ?
     `);
-    return stmt.all(limit);
+    const rows = stmt.all(limit);
+    return rows || [];
   }
 
   getRecentMemories(limit = 10) {
@@ -94,12 +98,14 @@ class MemoryManager {
       ORDER BY timestamp DESC 
       LIMIT ?
     `);
-    return stmt.all(limit);
+    const rows = stmt.all(limit);
+    return rows || [];
   }
 
   getMemoryCount() {
     const stmt = this.db.prepare(`SELECT COUNT(*) as count FROM memories`);
-    return stmt.get().count;
+    const result = stmt.get();
+    return result ? result.count : 0;
   }
 
   clearAll() {
