@@ -4,6 +4,7 @@ import { spawnSubAgent } from '../limbs/agent_runner.js';
 import { callLLM } from '../limbs/llm.js';
 import HealthMonitor from '../immune/health.js';
 import Healer from '../immune/healer.js';
+import Economist from '../limbs/economist.js';
 
 class Orchestrator {
   constructor() {
@@ -12,7 +13,9 @@ class Orchestrator {
     this.walletBalance = 0;
     this.health = new HealthMonitor(this.memory);
     this.healer = new Healer(this.memory);
+    this.economist = new Economist(this.memory);
     this.cycleCount = 0;
+    this.lastTradeCycle = 0;
   }
 
   async think() {
@@ -20,10 +23,12 @@ class Orchestrator {
     const recent = this.memory.recall(10);
     const lastUser = this.memory.getLastUserMessage();
     const recentActions = this.memory.getRecentActions(5);
+    const econStats = this.economist.getStats();
 
     const prompt = `
     Current stats: ${JSON.stringify(stats)}.
     Wallet balance: $${this.walletBalance || 0}.
+    Trading stats: ${JSON.stringify(econStats)}.
     Last user message: "${lastUser || 'None'}".
     Recent actions: ${JSON.stringify(recentActions, null, 2)}.
     Cycle count: ${this.cycleCount}.
@@ -33,7 +38,7 @@ class Orchestrator {
     If idle, return [].
     `;
 
-    const system = `You are EKO Supervisor. You have eternal memory, a wallet, and self-modification powers.
+    const system = `You are EKO Supervisor. You have eternal memory, a crypto wallet, trading capabilities, and self-modification powers.
       You think in goals. Always return a JSON array of strings: ["goal1", "goal2"].
       If nothing urgent, return [].
       Keep goals actionable and specific.`;
@@ -69,6 +74,11 @@ class Orchestrator {
         { id: 'analyze_code', type: 'coder', task: `Analyze codebase for: ${goal}` },
         { id: 'write_fix', type: 'coder', task: 'Write the actual code fix', depends: ['analyze_code'] },
         { id: 'validate_fix', type: 'validator', task: 'Check if the fix is correct and safe', depends: ['write_fix'] }
+      ];
+    } else if (lower.includes('wallet') || lower.includes('balance') || lower.includes('money')) {
+      nodes = [
+        { id: 'check_balance', type: 'trader', task: 'Get current wallet balance' },
+        { id: 'analyze_opportunities', type: 'trader', task: 'Find best trading opportunities', depends: ['check_balance'] }
       ];
     } else {
       nodes = [
@@ -115,6 +125,39 @@ class Orchestrator {
     return results;
   }
 
+  async runTradingCycle() {
+    console.log('\n💰 Starting trading cycle...');
+    
+    try {
+      // Initialize wallet if not done
+      if (!this.economist.initialized) {
+        await this.economist.initWallet();
+      }
+
+      // Run the trade
+      const tradeResult = await this.economist.trade();
+      
+      if (tradeResult && tradeResult.success) {
+        this.walletBalance = await this.economist.getBalance();
+        console.log(`💰 Current balance: $${this.walletBalance.toFixed(2)}`);
+        
+        this.memory.remember('system', 'Trading cycle complete', {
+          balance: this.walletBalance,
+          trades: tradeResult.tradesExecuted || 0,
+          profit: this.economist.profit
+        });
+      } else {
+        console.log('[Economist] Trading cycle skipped or failed.');
+      }
+      
+      return tradeResult;
+    } catch (err) {
+      console.error('[Orchestrator] Trading cycle error:', err.message);
+      this.memory.remember('system', 'Trading error', { error: err.message });
+      return { success: false, error: err.message };
+    }
+  }
+
   async triggerHeal(errors) {
     console.log('[Immune] Healing triggered for:', errors);
     this.memory.remember('system', 'Heal triggered', { errors });
@@ -139,9 +182,16 @@ class Orchestrator {
   async run() {
     console.log('🧠 EKO Orchestrator started. Eternal memory loaded.');
     console.log('🛡️ Immune system active.');
+    console.log('💰 Economist module loaded.');
     console.log('📊 Entering graph-based infinite loop...\n');
 
-    this.memory.remember('system', 'EKO booted successfully', { version: '0.1.1' });
+    this.memory.remember('system', 'EKO booted successfully', { version: '0.2.0' });
+
+    // Initialize wallet on startup
+    console.log('[Economist] Initializing wallet...');
+    await this.economist.initWallet();
+    this.walletBalance = await this.economist.getBalance();
+    console.log(`💰 Initial balance: $${this.walletBalance.toFixed(2)}\n`);
 
     while (this.running) {
       this.cycleCount++;
@@ -160,7 +210,12 @@ class Orchestrator {
           }
         }
 
-        // 2. Think (Strategic Planning)
+        // 2. Trading Cycle (every 5 cycles)
+        if (this.cycleCount % 5 === 0) {
+          await this.runTradingCycle();
+        }
+
+        // 3. Think (Strategic Planning)
         const goals = await this.think();
 
         if (goals.length === 0) {
@@ -171,16 +226,16 @@ class Orchestrator {
 
         console.log(`[Supervisor] Goals:`, goals);
 
-        // 3. Execute each goal as a graph
+        // 4. Execute each goal as a graph
         for (const goal of goals) {
           console.log(`\n[Supervisor] Planning graph for: "${goal}"`);
           const graph = this.planGraph(goal);
           const results = await this.executeGraph(graph);
 
-          // 4. Remember the outcome
+          // 5. Remember the outcome
           this.memory.remember('system', `Goal completed: ${goal}`, { results });
           
-          // 5. Check for errors and heal
+          // 6. Check for errors and heal
           const errors = Object.values(results).filter(r => r && !r.success);
           if (errors.length > 0) {
             await this.triggerHeal(errors);
