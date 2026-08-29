@@ -1,7 +1,7 @@
 {
   "name": "eko-omni",
-  "version": "0.2.0",
-  "description": "Autonomous AI daemon with eternal memory, graph-based parallel brain, self-healing code, and support for any LLM.",
+  "version": "0.5.0",
+  "description": "Autonomous AI daemon with eternal memory, graph-based parallel brain, self-healing code, physical world control, strategic planning, scientific discovery, and self-replication.",
   "type": "module",
   "main": "index.js",
   "scripts": {
