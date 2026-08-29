@@ -5,6 +5,7 @@ import { callLLM } from '../limbs/llm.js';
 import HealthMonitor from '../immune/health.js';
 import Healer from '../immune/healer.js';
 import Economist from '../limbs/economist.js';
+import Physicist from '../limbs/physicist.js';
 
 class Orchestrator {
   constructor() {
@@ -14,8 +15,10 @@ class Orchestrator {
     this.health = new HealthMonitor(this.memory);
     this.healer = new Healer(this.memory);
     this.economist = new Economist(this.memory);
+    this.physicist = new Physicist(this.memory);
     this.cycleCount = 0;
     this.lastTradeCycle = 0;
+    this.lastPhysicalCycle = 0;
   }
 
   async think() {
@@ -24,21 +27,27 @@ class Orchestrator {
     const lastUser = this.memory.getLastUserMessage();
     const recentActions = this.memory.getRecentActions(5);
     const econStats = this.economist.getStats();
+    const physStats = this.physicist.getStats();
 
     const prompt = `
     Current stats: ${JSON.stringify(stats)}.
     Wallet balance: $${this.walletBalance || 0}.
     Trading stats: ${JSON.stringify(econStats)}.
+    Physical stats: ${JSON.stringify(physStats)}.
     Last user message: "${lastUser || 'None'}".
     Recent actions: ${JSON.stringify(recentActions, null, 2)}.
     Cycle count: ${this.cycleCount}.
 
     What should I do next? Return as JSON array of goal strings.
-    Examples: ["Check crypto arbitrage"], ["Optimize my own code"], ["Research AI news"], ["Write a new tool"].
+    Examples: 
+    - Financial: ["Check crypto arbitrage"], ["Analyze market trends"]
+    - Physical: ["Print a 3D model"], ["Control smart home lights"], ["Deploy DePIN compute"]
+    - Development: ["Optimize my own code"], ["Fix a bug"], ["Write a new tool"]
+    - Research: ["Research AI news"], ["Learn about new technologies"]
     If idle, return [].
     `;
 
-    const system = `You are EKO Supervisor. You have eternal memory, a crypto wallet, trading capabilities, and self-modification powers.
+    const system = `You are EKO Supervisor. You have eternal memory, a crypto wallet, trading capabilities, physical world control (3D printers, smart home, drones, DePIN), and self-modification powers.
       You think in goals. Always return a JSON array of strings: ["goal1", "goal2"].
       If nothing urgent, return [].
       Keep goals actionable and specific.`;
@@ -63,6 +72,28 @@ class Orchestrator {
         { id: 'fetch_btc', type: 'trader', task: 'Get current BTC price', pair: 'BTC/USD' },
         { id: 'fetch_eth', type: 'trader', task: 'Get current ETH price', pair: 'ETH/USD' },
         { id: 'compare', type: 'validator', task: 'Compare prices and suggest arbitrage', depends: ['fetch_btc', 'fetch_eth'] }
+      ];
+    } else if (lower.includes('print') || lower.includes('3d') || lower.includes('printer')) {
+      nodes = [
+        { id: 'check_printer', type: 'physicist', task: 'Check 3D printer status' },
+        { id: 'prepare_model', type: 'physicist', task: 'Prepare model file for printing' },
+        { id: 'execute_print', type: 'physicist', task: 'Execute 3D print', depends: ['check_printer', 'prepare_model'] }
+      ];
+    } else if (lower.includes('light') || lower.includes('home') || lower.includes('smart')) {
+      nodes = [
+        { id: 'analyze_room', type: 'physicist', task: 'Check which rooms are active' },
+        { id: 'control_light', type: 'physicist', task: 'Control smart home lights', depends: ['analyze_room'] }
+      ];
+    } else if (lower.includes('depin') || lower.includes('deploy')) {
+      nodes = [
+        { id: 'check_network', type: 'physicist', task: 'Check DePIN network status' },
+        { id: 'deploy_resource', type: 'physicist', task: 'Deploy resources on DePIN', depends: ['check_network'] }
+      ];
+    } else if (lower.includes('drone') || lower.includes('fly')) {
+      nodes = [
+        { id: 'check_drone', type: 'physicist', task: 'Check drone status and location' },
+        { id: 'plan_route', type: 'physicist', task: 'Plan flight route' },
+        { id: 'execute_flight', type: 'physicist', task: 'Execute drone flight', depends: ['check_drone', 'plan_route'] }
       ];
     } else if (lower.includes('research') || lower.includes('learn') || lower.includes('news')) {
       nodes = [
@@ -158,6 +189,37 @@ class Orchestrator {
     }
   }
 
+  async runPhysicalCycle() {
+    console.log('\n🌍 Starting physical world cycle...');
+    
+    try {
+      // Initialize physicist if not done
+      if (!this.physicist.initialized) {
+        await this.physicist.init();
+      }
+
+      // Run the physical cycle
+      const physicalResult = await this.physicist.runCycle();
+      
+      if (physicalResult && physicalResult.success) {
+        console.log(`🌍 Physical actions executed: ${physicalResult.actionsExecuted || 0}`);
+        
+        this.memory.remember('system', 'Physical cycle complete', {
+          actions: physicalResult.actionsExecuted || 0,
+          devices: this.physicist.devices.length
+        });
+      } else {
+        console.log('[Physicist] Physical cycle skipped or failed.');
+      }
+      
+      return physicalResult;
+    } catch (err) {
+      console.error('[Orchestrator] Physical cycle error:', err.message);
+      this.memory.remember('system', 'Physical error', { error: err.message });
+      return { success: false, error: err.message };
+    }
+  }
+
   async triggerHeal(errors) {
     console.log('[Immune] Healing triggered for:', errors);
     this.memory.remember('system', 'Heal triggered', { errors });
@@ -183,15 +245,21 @@ class Orchestrator {
     console.log('🧠 EKO Orchestrator started. Eternal memory loaded.');
     console.log('🛡️ Immune system active.');
     console.log('💰 Economist module loaded.');
+    console.log('🌍 Physicist module loaded.');
     console.log('📊 Entering graph-based infinite loop...\n');
 
-    this.memory.remember('system', 'EKO booted successfully', { version: '0.2.0' });
+    this.memory.remember('system', 'EKO booted successfully', { version: '0.3.0' });
 
     // Initialize wallet on startup
     console.log('[Economist] Initializing wallet...');
     await this.economist.initWallet();
     this.walletBalance = await this.economist.getBalance();
     console.log(`💰 Initial balance: $${this.walletBalance.toFixed(2)}\n`);
+
+    // Initialize physicist on startup
+    console.log('[Physicist] Initializing physical world...');
+    await this.physicist.init();
+    console.log(`🌍 ${this.physicist.devices.length} physical devices available\n`);
 
     while (this.running) {
       this.cycleCount++;
@@ -215,7 +283,12 @@ class Orchestrator {
           await this.runTradingCycle();
         }
 
-        // 3. Think (Strategic Planning)
+        // 3. Physical World Cycle (every 10 cycles)
+        if (this.cycleCount % 10 === 0) {
+          await this.runPhysicalCycle();
+        }
+
+        // 4. Think (Strategic Planning)
         const goals = await this.think();
 
         if (goals.length === 0) {
@@ -226,16 +299,16 @@ class Orchestrator {
 
         console.log(`[Supervisor] Goals:`, goals);
 
-        // 4. Execute each goal as a graph
+        // 5. Execute each goal as a graph
         for (const goal of goals) {
           console.log(`\n[Supervisor] Planning graph for: "${goal}"`);
           const graph = this.planGraph(goal);
           const results = await this.executeGraph(graph);
 
-          // 5. Remember the outcome
+          // 6. Remember the outcome
           this.memory.remember('system', `Goal completed: ${goal}`, { results });
           
-          // 6. Check for errors and heal
+          // 7. Check for errors and heal
           const errors = Object.values(results).filter(r => r && !r.success);
           if (errors.length > 0) {
             await this.triggerHeal(errors);
