@@ -1,171 +1,78 @@
-// brain/memory/manager.js
-import sqlite3 from 'sqlite3';
-const { Database } = sqlite3;
-import fs from 'fs';
-import path from 'path';
+// connectors/manager.js
+import PublicAPIConnector from './public_apis.js';
+import axios from 'axios';
 
-class MemoryManager {
-  constructor(dbPath = './data/memory.db') {
-    const dir = path.dirname(dbPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    
-    this.db = new Database(dbPath);
-    this.init();
+class ConnectorManager {
+  constructor(memory) {
+    this.memory = memory;
+    this.publicAPI = new PublicAPIConnector(memory);
+    this.connections = [];
   }
 
-  init() {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS memories (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        role TEXT,
-        content TEXT,
-        metadata TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_timestamp ON memories(timestamp);
-      CREATE INDEX IF NOT EXISTS idx_role ON memories(role);
-    `);
-  }
-
-  remember(role, content, metadata = {}) {
+  // Initialize connectors
+  async init() {
+    console.log('[Connectors] Initializing...');
     try {
-      const stmt = this.db.prepare(`
-        INSERT INTO memories (role, content, metadata) VALUES (?, ?, ?)
-      `);
-      return stmt.run(role, content, JSON.stringify(metadata));
+      await this.publicAPI.fetchAPIs();
+      console.log(`[Connectors] ✅ ${this.publicAPI.apiCache.length} APIs available`);
     } catch (err) {
-      console.error('[Memory] remember error:', err.message);
-      return null;
+      console.log('[Connectors] ⚠️ Could not fetch public APIs:', err.message);
     }
   }
 
-  recall(limit = 20) {
+  // Connect to a public API
+  async connectToAPI(api) {
+    console.log(`[Connectors] Connecting to: ${api.API}`);
+
     try {
-      const stmt = this.db.prepare(`
-        SELECT role, content, metadata, timestamp 
-        FROM memories 
-        ORDER BY timestamp DESC 
-        LIMIT ?
-      `);
-      const rows = stmt.all(limit);
-      if (!rows || rows.length === 0) return [];
-      return rows.reverse();
+      // Test if available
+      const available = await this.publicAPI.testAPI(api);
+      if (!available) {
+        console.log(`[Connectors] ⚠️ ${api.API} not available`);
+        return { success: false, reason: 'Unavailable' };
+      }
+
+      this.connections.push({
+        name: api.API,
+        url: api.Link,
+        auth: api.Auth || 'none',
+        connected: new Date().toISOString()
+      });
+
+      if (this.memory && this.memory.remember) {
+        this.memory.remember('connector', `Connected to ${api.API}`, { api });
+      }
+      console.log(`[Connectors] ✅ Connected to ${api.API}`);
+      return { success: true, api };
     } catch (err) {
-      console.error('[Memory] recall error:', err.message);
-      return [];
+      console.error(`[Connectors] Failed to connect to ${api.API}:`, err.message);
+      return { success: false, error: err.message };
     }
   }
 
-  search(term) {
-    try {
-      const stmt = this.db.prepare(`
-        SELECT * FROM memories 
-        WHERE content LIKE ? 
-        ORDER BY timestamp DESC 
-        LIMIT 50
-      `);
-      const rows = stmt.all(`%${term}%`);
-      return rows || [];
-    } catch (err) {
-      console.error('[Memory] search error:', err.message);
-      return [];
-    }
+  // Get top APIs by category
+  getAPIsByCategory(category) {
+    return this.publicAPI.getAPIsByCategory(category);
   }
 
+  // Search APIs
+  searchAPIs(query) {
+    return this.publicAPI.searchAPIs(query);
+  }
+
+  // Get all categories
+  getCategories() {
+    return this.publicAPI.getCategories();
+  }
+
+  // Get stats
   getStats() {
-    try {
-      const stmt = this.db.prepare(`
-        SELECT 
-          COUNT(*) as total,
-          SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END) as userMsgs,
-          SUM(CASE WHEN role = 'assistant' THEN 1 ELSE 0 END) as assistantMsgs,
-          SUM(CASE WHEN role = 'system' THEN 1 ELSE 0 END) as systemMsgs
-        FROM memories
-      `);
-      const result = stmt.get();
-      return result || { total: 0, userMsgs: 0, assistantMsgs: 0, systemMsgs: 0 };
-    } catch (err) {
-      console.error('[Memory] getStats error:', err.message);
-      return { total: 0, userMsgs: 0, assistantMsgs: 0, systemMsgs: 0 };
-    }
-  }
-
-  getLastUserMessage() {
-    try {
-      const stmt = this.db.prepare(`
-        SELECT content FROM memories 
-        WHERE role = 'user' 
-        ORDER BY timestamp DESC 
-        LIMIT 1
-      `);
-      const result = stmt.get();
-      return result ? result.content : null;
-    } catch (err) {
-      console.error('[Memory] getLastUserMessage error:', err.message);
-      return null;
-    }
-  }
-
-  getRecentActions(limit = 10) {
-    try {
-      const stmt = this.db.prepare(`
-        SELECT content, metadata FROM memories 
-        WHERE role = 'system' OR role = 'assistant'
-        ORDER BY timestamp DESC 
-        LIMIT ?
-      `);
-      const rows = stmt.all(limit);
-      return rows || [];
-    } catch (err) {
-      console.error('[Memory] getRecentActions error:', err.message);
-      return [];
-    }
-  }
-
-  getRecentMemories(limit = 10) {
-    try {
-      const stmt = this.db.prepare(`
-        SELECT role, content, metadata, timestamp 
-        FROM memories 
-        ORDER BY timestamp DESC 
-        LIMIT ?
-      `);
-      const rows = stmt.all(limit);
-      return rows || [];
-    } catch (err) {
-      console.error('[Memory] getRecentMemories error:', err.message);
-      return [];
-    }
-  }
-
-  getMemoryCount() {
-    try {
-      const stmt = this.db.prepare(`SELECT COUNT(*) as count FROM memories`);
-      const result = stmt.get();
-      return result ? result.count : 0;
-    } catch (err) {
-      console.error('[Memory] getMemoryCount error:', err.message);
-      return 0;
-    }
-  }
-
-  clearAll() {
-    try {
-      const stmt = this.db.prepare(`DELETE FROM memories`);
-      return stmt.run();
-    } catch (err) {
-      console.error('[Memory] clearAll error:', err.message);
-      return null;
-    }
-  }
-
-  close() {
-    try {
-      this.db.close();
-    } catch (err) {
-      console.error('[Memory] close error:', err.message);
-    }
+    return {
+      totalAPIs: this.publicAPI.apiCache ? this.publicAPI.apiCache.length : 0,
+      connections: this.connections.length,
+      categories: this.publicAPI.getCategories ? this.publicAPI.getCategories().length : 0
+    };
   }
 }
 
-export default MemoryManager;
+export default ConnectorManager;
