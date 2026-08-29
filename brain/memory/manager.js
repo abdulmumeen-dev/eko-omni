@@ -1,5 +1,6 @@
 // brain/memory/manager.js
-import Database from 'better-sqlite3';
+import sqlite3 from 'sqlite3';
+const { Database } = sqlite3;
 import fs from 'fs';
 import path from 'path';
 
@@ -84,6 +85,26 @@ class MemoryManager {
       LIMIT ?
     `);
     return stmt.all(limit);
+  }
+
+  getRecentMemories(limit = 10) {
+    const stmt = this.db.prepare(`
+      SELECT role, content, metadata, timestamp 
+      FROM memories 
+      ORDER BY timestamp DESC 
+      LIMIT ?
+    `);
+    return stmt.all(limit);
+  }
+
+  getMemoryCount() {
+    const stmt = this.db.prepare(`SELECT COUNT(*) as count FROM memories`);
+    return stmt.get().count;
+  }
+
+  clearAll() {
+    const stmt = this.db.prepare(`DELETE FROM memories`);
+    return stmt.run();
   }
 
   close() {
