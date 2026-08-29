@@ -12,9 +12,9 @@ import Strategist from '../noesis/strategist.js';
 import CONSTITUTION from './constitution.js';
 import Replicator from '../limbs/replicator.js';
 import SoulString from '../soul/soul_string.js';
-import WorkingMemory from '../memory/working.js';
-import EpisodicMemory from '../memory/episodic.js';
-import ProceduralMemory from '../memory/procedural.js';
+import WorkingMemory from './memory/working.js';
+import EpisodicMemory from './memory/episodic.js';
+import ProceduralMemory from './memory/procedural.js';
 import SkillExtractor from '../skills/skill_extractor.js';
 import PlatformManager from '../platforms/manager.js';
 import Browser from '../limbs/browser.js';
@@ -85,7 +85,6 @@ class Orchestrator {
     const browserStats = this.browser.getStats();
     const balance = this.walletBalance || 0;
 
-    // Determine survival tier
     let tier = 'normal';
     if (balance <= 0) tier = 'dead';
     else if (balance < 10) tier = 'critical';
@@ -522,8 +521,6 @@ class Orchestrator {
       console.log(`📱 ${stats.platforms.length} platforms available.`);
       console.log(`📱 ${stats.totalMessages} total messages.`);
       
-      // In production: check messages on all platforms
-      // For now: log stats
       this.memory.remember('system', 'Platform cycle', stats);
       return { success: true, stats };
     } catch (err) {
