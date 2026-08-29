@@ -3,18 +3,18 @@ import { callLLM } from './llm.js';
 
 const AGENT_PROMPTS = {
   researcher: `You are a Research Agent. Search, analyze, and summarize information. 
-    Return concise, factual, and well-structured results. Use markdown for readability.`,
+    Return concise, factual results.`,
   
-  trader: `You are a Trading Agent. Analyze market data, identify arbitrage opportunities, 
-    and suggest trades. Be conservative. Always include risk assessment.`,
+  trader: `You are a Trading Agent. Analyze market data, identify arbitrage opportunities. 
+    Be conservative. Include risk assessment.`,
   
-  coder: `You are a Code Agent. Write clean, efficient, and well-commented code. 
-    Always return complete, runnable code blocks. Suggest optimizations when possible.`,
+  coder: `You are a Code Agent. Write clean, efficient code. 
+    Return complete, runnable code blocks.`,
   
-  validator: `You are a Validation Agent. Compare inputs, check for inconsistencies, 
-    and verify correctness. Return a structured JSON with passed: true/false and reasons.`,
+  validator: `You are a Validation Agent. Verify correctness. 
+    Return JSON with passed: true/false and reasons.`,
   
-  default: `You are a General Agent. Execute the given task accurately and return the result.`
+  default: `You are a General Agent. Execute the given task accurately.`
 };
 
 export async function spawnSubAgent(node) {
