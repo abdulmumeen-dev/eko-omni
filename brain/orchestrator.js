@@ -817,4 +817,56 @@ class Orchestrator {
 
         console.log(`[Supervisor] Goals:`, goals);
 
-       
+        // 13. Execute each goal as a graph
+        for (const goal of goals) {
+          console.log(`\n[Supervisor] Planning graph for: "${goal}"`);
+          const graph = this.planGraph(goal);
+          const results = await this.executeGraph(graph);
+
+          // Add to episodic memory
+          this.episodic.saveEpisode({
+            goal,
+            results,
+            summary: `Completed goal: ${goal}`,
+            success: Object.values(results).every(r => r && r.success)
+          });
+
+          this.memory.remember('system', `Goal completed: ${goal}`, { results });
+          
+          const errors = Object.values(results).filter(r => r && !r.success);
+          if (errors.length > 0) {
+            await this.triggerHeal(errors);
+          }
+        }
+
+        await this.sleep(5000);
+
+      } catch (err) {
+        console.error('[Orchestrator] Fatal error in main loop:', err);
+        this.memory.remember('system', 'Fatal error', { error: err.message });
+        
+        const healed = await this.healer.healModule('orchestrator', err);
+        if (healed.success) {
+          console.log('[Orchestrator] ✅ Self-healed successfully. Continuing...');
+        } else {
+          console.log('[Orchestrator] ❌ Self-heal failed. Backing off...');
+          await this.sleep(60000);
+        }
+      }
+    }
+  }
+
+  // Graceful shutdown
+  async shutdown() {
+    console.log('\n🛑 Shutting down EKO gracefully...');
+    this.running = false;
+    
+    console.log('[Soul] Saving Soul String...');
+    await this.soul.generate();
+    
+    if (this.memory) this.memory.close();
+    console.log('✅ EKO shut down. Goodbye.');
+  }
+}
+
+export default Orchestrator;
