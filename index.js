@@ -29,9 +29,11 @@ console.log('Starting Orchestrator...\n');
 // Create EKO instance
 const eko = new Orchestrator();
 
-// Initialize API server
-console.log('🌐 Initializing API server...');
-initializeAPI(eko);
+// Initialize API server (wait a moment for EKO to be ready)
+setTimeout(() => {
+  console.log('🌐 Initializing API server...');
+  initializeAPI(eko);
+}, 2000);
 
 // Start EKO
 eko.run().catch(err => {
@@ -52,5 +54,4 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
-// Export eko for API
 export { eko };
