@@ -1,0 +1,94 @@
+// brain/memory/manager.js
+import Database from 'better-sqlite3';
+import fs from 'fs';
+import path from 'path';
+
+class MemoryManager {
+  constructor(dbPath = './data/memory.db') {
+    const dir = path.dirname(dbPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    
+    this.db = new Database(dbPath);
+    this.init();
+  }
+
+  init() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS memories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        role TEXT,
+        content TEXT,
+        metadata TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_timestamp ON memories(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_role ON memories(role);
+    `);
+  }
+
+  remember(role, content, metadata = {}) {
+    const stmt = this.db.prepare(`
+      INSERT INTO memories (role, content, metadata) VALUES (?, ?, ?)
+    `);
+    return stmt.run(role, content, JSON.stringify(metadata));
+  }
+
+  recall(limit = 20) {
+    const stmt = this.db.prepare(`
+      SELECT role, content, metadata, timestamp 
+      FROM memories 
+      ORDER BY timestamp DESC 
+      LIMIT ?
+    `);
+    return stmt.all(limit).reverse();
+  }
+
+  search(term) {
+    const stmt = this.db.prepare(`
+      SELECT * FROM memories 
+      WHERE content LIKE ? 
+      ORDER BY timestamp DESC 
+      LIMIT 50
+    `);
+    return stmt.all(`%${term}%`);
+  }
+
+  getStats() {
+    const stmt = this.db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END) as userMsgs,
+        SUM(CASE WHEN role = 'assistant' THEN 1 ELSE 0 END) as assistantMsgs,
+        SUM(CASE WHEN role = 'system' THEN 1 ELSE 0 END) as systemMsgs
+      FROM memories
+    `);
+    return stmt.get();
+  }
+
+  getLastUserMessage() {
+    const stmt = this.db.prepare(`
+      SELECT content FROM memories 
+      WHERE role = 'user' 
+      ORDER BY timestamp DESC 
+      LIMIT 1
+    `);
+    const result = stmt.get();
+    return result ? result.content : null;
+  }
+
+  getRecentActions(limit = 10) {
+    const stmt = this.db.prepare(`
+      SELECT content, metadata FROM memories 
+      WHERE role = 'system' OR role = 'assistant'
+      ORDER BY timestamp DESC 
+      LIMIT ?
+    `);
+    return stmt.all(limit);
+  }
+
+  close() {
+    this.db.close();
+  }
+}
+
+export default MemoryManager;
