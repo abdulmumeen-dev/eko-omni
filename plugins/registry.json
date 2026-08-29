@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "plugins": [
+    {
+      "id": "research-plugin",
+      "name": "Research Plugin",
+      "version": "1.0.0",
+      "skills": ["research", "summarize"],
+      "hooks": ["beforeThink", "afterGoal"]
+    },
+    {
+      "id": "trading-plugin",
+      "name": "Trading Plugin",
+      "version": "1.0.0",
+      "skills": ["arbitrage", "market_analysis"],
+      "hooks": ["beforeThink"]
+    },
+    {
+      "id": "knowledge-plugin",
+      "name": "Knowledge Loop Plugin",
+      "version": "1.0.0",
+      "skills": ["learn", "synthesize"],
+      "hooks": ["afterCycle"]
+    }
+  ]
+}
