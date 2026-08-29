@@ -1,7 +1,7 @@
 {
   "name": "eko-omni",
-  "version": "0.5.0",
-  "description": "Autonomous AI daemon with eternal memory, graph-based parallel brain, self-healing code, physical world control, strategic planning, scientific discovery, and self-replication.",
+  "version": "1.0.0",
+  "description": "The most complete autonomous AI daemon — eternal memory, self-healing, physical control, scientific discovery, skill evolution, multi-platform reach, and self-replication.",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -9,10 +9,13 @@
     "dev": "node --watch index.js"
   },
   "dependencies": {
+    "axios": "^1.6.0",
     "better-sqlite3": "^9.2.2",
     "dotenv": "^16.3.1",
     "openai": "^4.20.0",
-    "axios": "^1.6.0"
+    "discord.js": "^14.14.1",
+    "telegraf": "^4.15.0",
+    "@slack/bolt": "^3.17.0"
   },
   "engines": {
     "node": ">=18.0.0"
