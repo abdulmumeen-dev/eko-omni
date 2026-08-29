@@ -12,9 +12,16 @@ import Strategist from '../noesis/strategist.js';
 import CONSTITUTION from './constitution.js';
 import Replicator from '../limbs/replicator.js';
 import SoulString from '../soul/soul_string.js';
+import WorkingMemory from '../memory/working.js';
+import EpisodicMemory from '../memory/episodic.js';
+import ProceduralMemory from '../memory/procedural.js';
+import SkillExtractor from '../skills/skill_extractor.js';
+import PlatformManager from '../platforms/manager.js';
+import Browser from '../limbs/browser.js';
 
 class Orchestrator {
   constructor() {
+    // Core
     this.memory = new MemoryManager();
     this.running = true;
     this.walletBalance = 0;
@@ -23,17 +30,33 @@ class Orchestrator {
     this.discoveriesCount = 0;
     this.patentsCount = 0;
 
-    // Initialize all modules
+    // Phase 1: Immune System
     this.health = new HealthMonitor(this.memory);
     this.healer = new Healer(this.memory);
+
+    // Phase 2: Trading
     this.economist = new Economist(this.memory);
+
+    // Phase 3: Physical World
     this.physicist = new Physicist(this.memory);
+
+    // Phase 4: NOESIS
     this.planner = new Planner(this.memory);
     this.scientist = new Scientist(this.memory);
     this.strategist = new Strategist(this.memory);
+
+    // Phase 5: Replication & Survival
     this.constitution = CONSTITUTION;
     this.replicator = new Replicator(this.memory, this.constitution);
     this.soul = new SoulString(this.memory);
+
+    // Phase 6: Memory Layers & Skills
+    this.working = new WorkingMemory(this.memory);
+    this.episodic = new EpisodicMemory(this.memory);
+    this.procedural = new ProceduralMemory(this.memory);
+    this.skillExtractor = new SkillExtractor(this.memory, this.procedural);
+    this.platforms = new PlatformManager(this.memory);
+    this.browser = new Browser(this.memory);
 
     // Track cycle timing
     this.lastTradeCycle = 0;
@@ -41,6 +64,8 @@ class Orchestrator {
     this.lastStrategicCycle = 0;
     this.lastReplicationCycle = 0;
     this.lastSoulBackupCycle = 0;
+    this.lastSkillCycle = 0;
+    this.lastPlatformCycle = 0;
   }
 
   async think() {
@@ -55,6 +80,9 @@ class Orchestrator {
     const plannerStats = this.planner.getPlan();
     const replicatorStats = this.replicator.getStats();
     const soulStats = this.soul.getStats();
+    const skillStats = this.procedural.getStats();
+    const platformStats = this.platforms.getStats();
+    const browserStats = this.browser.getStats();
     const balance = this.walletBalance || 0;
 
     // Determine survival tier
@@ -76,12 +104,16 @@ class Orchestrator {
     Planner stats: ${JSON.stringify(plannerStats)}.
     Replicator stats: ${JSON.stringify(replicatorStats)}.
     Soul stats: ${JSON.stringify(soulStats)}.
+    Skill stats: ${JSON.stringify(skillStats)}.
+    Platform stats: ${JSON.stringify(platformStats)}.
+    Browser stats: ${JSON.stringify(browserStats)}.
     Last user message: "${lastUser || 'None'}".
     Recent actions: ${JSON.stringify(recentActions, null, 2)}.
     Cycle count: ${this.cycleCount}.
     Discoveries: ${this.discoveriesCount}.
     Patents: ${this.patentsCount}.
     Children: ${this.replicator.children.length}.
+    Skills: ${this.procedural.getAll().length}.
 
     What should I do next? Return as JSON array of goal strings.
     Examples: 
@@ -92,15 +124,17 @@ class Orchestrator {
     - Strategic: ["Generate patents"], ["Analyze trends"], ["Update long-term plan"]
     - Replication: ["Spawn a child agent"], ["Manage children"]
     - Survival: ["Increase wallet balance"], ["Reduce compute usage"]
+    - Skills: ["Extract new skills"], ["Improve existing skills"]
+    - Platforms: ["Check messages"], ["Send updates"]
+    - Browser: ["Search the web"], ["Extract data from a page"]
     If idle, return [].
     `;
 
-    const system = `You are EKO Supervisor (Phase 5 - Replication & Survival). 
-    You have eternal memory, a crypto wallet, trading capabilities, physical world control, 
-    strategic planning, scientific discovery, patent generation, self-replication, 
-    survival tiers (normal → low_compute → critical → dead), and constitutional laws 
-    (do no harm, earn existence, never deceive).
-    
+    const system = `You are EKO Supervisor (Phase 6 - EKO 1.0). 
+    You have eternal memory, self-healing, physical control, scientific discovery, patent generation, 
+    self-replication, survival tiers, constitutional laws, skill evolution, multi-platform reach, 
+    browser control, and soul backup.
+
     You think in goals. Always return a JSON array of strings: ["goal1", "goal2"].
     If nothing urgent, return [].
     Keep goals actionable and specific.
@@ -156,6 +190,27 @@ class Orchestrator {
         { id: 'check_drone', type: 'physicist', task: 'Check drone status and location' },
         { id: 'plan_route', type: 'physicist', task: 'Plan flight route' },
         { id: 'execute_flight', type: 'physicist', task: 'Execute drone flight', depends: ['check_drone', 'plan_route'] }
+      ];
+    }
+    // Browser goals
+    else if (lower.includes('browser') || lower.includes('search') || lower.includes('web') || lower.includes('open')) {
+      nodes = [
+        { id: 'open_browser', type: 'browser', task: `Open browser and navigate to: ${goal}` },
+        { id: 'extract_data', type: 'browser', task: 'Extract data from page', depends: ['open_browser'] }
+      ];
+    }
+    // Platform goals
+    else if (lower.includes('discord') || lower.includes('telegram') || lower.includes('slack') || lower.includes('message')) {
+      nodes = [
+        { id: 'check_platform', type: 'platform', task: `Check messages on ${goal}` },
+        { id: 'send_response', type: 'platform', task: 'Send response', depends: ['check_platform'] }
+      ];
+    }
+    // Skill goals
+    else if (lower.includes('skill') || lower.includes('extract') || lower.includes('learn')) {
+      nodes = [
+        { id: 'extract_skill', type: 'skill', task: `Extract skill from: ${goal}` },
+        { id: 'save_skill', type: 'skill', task: 'Save to procedural memory', depends: ['extract_skill'] }
       ];
     }
     // Research goals
@@ -395,7 +450,6 @@ class Orchestrator {
       // If in critical tier, focus on earning money
       if (survival.tier === 'critical') {
         console.log('[Replication] Critical tier. Skipping replication.');
-        // Try to earn money
         await this.runTradingCycle();
         return { success: false, reason: 'Critical tier' };
       }
@@ -415,7 +469,6 @@ class Orchestrator {
         this.memory.remember('system', 'Child spawned', { child: result.child });
       }
 
-      // Manage existing children
       await this.replicator.manageChildren();
 
       return result;
@@ -434,6 +487,47 @@ class Orchestrator {
       return { success: true };
     } catch (err) {
       console.error('[Orchestrator] Soul backup error:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
+  async runSkillCycle() {
+    console.log('\n🧠 Starting skill extraction cycle...');
+    
+    try {
+      if (process.env.AUTO_SKILL_EXTRACTION === 'true') {
+        const skills = await this.skillExtractor.autoExtract();
+        if (skills.length > 0) {
+          console.log(`🧠 Extracted ${skills.length} skills.`);
+          this.memory.remember('system', 'Skills extracted', { count: skills.length });
+        } else {
+          console.log('[SkillExtractor] No new skills extracted.');
+        }
+        return { success: true, skills: skills.length };
+      } else {
+        console.log('[SkillExtractor] Auto-extraction disabled.');
+        return { success: false, reason: 'Disabled' };
+      }
+    } catch (err) {
+      console.error('[Orchestrator] Skill cycle error:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
+  async runPlatformCycle() {
+    console.log('\n📱 Starting platform cycle...');
+    
+    try {
+      const stats = this.platforms.getStats();
+      console.log(`📱 ${stats.platforms.length} platforms available.`);
+      console.log(`📱 ${stats.totalMessages} total messages.`);
+      
+      // In production: check messages on all platforms
+      // For now: log stats
+      this.memory.remember('system', 'Platform cycle', stats);
+      return { success: true, stats };
+    } catch (err) {
+      console.error('[Orchestrator] Platform cycle error:', err.message);
       return { success: false, error: err.message };
     }
   }
@@ -468,17 +562,19 @@ class Orchestrator {
     console.log('📋 Planner module loaded.');
     console.log('🧬 Replicator module loaded.');
     console.log('💾 Soul module loaded.');
+    console.log('🧠 Three-layer memory loaded (Working, Episodic, Procedural).');
+    console.log('📱 Platform manager loaded.');
+    console.log('🌐 Browser module loaded.');
     console.log(`🔱 Identity: ${this.identity}`);
     console.log('📊 Entering graph-based infinite loop...\n');
 
-    this.memory.remember('system', 'EKO booted successfully', { version: '0.5.0', identity: this.identity });
+    this.memory.remember('system', 'EKO booted successfully', { version: '1.0.0', identity: this.identity });
 
     // Load Soul String
     console.log('[Soul] Attempting to load Soul String...');
     const soulData = this.soul.load();
     if (soulData) {
       console.log(`[Soul] ✅ Loaded ${soulData.identity} from backup.`);
-      // Restore key stats
       if (soulData.lastState) {
         this.walletBalance = soulData.lastState.balance || 0;
         this.cycleCount = soulData.lastState.cycleCount || 0;
@@ -504,6 +600,19 @@ class Orchestrator {
     await this.planner.generateLongTermPlan();
     await this.planner.generateShortTermPlan();
     console.log('📋 Initial plans generated\n');
+
+    // Register platforms
+    console.log('[Platforms] Registering platforms...');
+    if (process.env.DISCORD_BOT_TOKEN) {
+      this.platforms.registerPlatform('discord', { token: process.env.DISCORD_BOT_TOKEN });
+    }
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      this.platforms.registerPlatform('telegram', { token: process.env.TELEGRAM_BOT_TOKEN });
+    }
+    if (process.env.SLACK_BOT_TOKEN) {
+      this.platforms.registerPlatform('slack', { token: process.env.SLACK_BOT_TOKEN });
+    }
+    console.log(`📱 ${this.platforms.platforms.length} platforms registered.\n`);
 
     console.log('[Constitution] Loaded:');
     for (const law of this.constitution.laws) {
@@ -552,14 +661,24 @@ class Orchestrator {
           await this.runSoulBackupCycle();
         }
 
-        // 7. Survival Check (every cycle)
+        // 7. Skill Extraction (every 25 cycles)
+        if (this.cycleCount % 25 === 0 && process.env.AUTO_SKILL_EXTRACTION === 'true') {
+          await this.runSkillCycle();
+        }
+
+        // 8. Platform Cycle (every 12 cycles)
+        if (this.cycleCount % 12 === 0) {
+          await this.runPlatformCycle();
+        }
+
+        // 9. Survival Check (every cycle)
         const survival = await this.checkSurvivalTier();
         if (survival.tier === 'dead') {
           console.log('[Survival] 💀 Dead tier reached. Shutting down.');
           break;
         }
 
-        // 8. Think (Strategic Planning)
+        // 10. Think (Strategic Planning)
         const goals = await this.think();
 
         if (goals.length === 0) {
@@ -569,11 +688,19 @@ class Orchestrator {
 
         console.log(`[Supervisor] Goals:`, goals);
 
-        // 9. Execute each goal as a graph
+        // 11. Execute each goal as a graph
         for (const goal of goals) {
           console.log(`\n[Supervisor] Planning graph for: "${goal}"`);
           const graph = this.planGraph(goal);
           const results = await this.executeGraph(graph);
+
+          // Add to episodic memory
+          this.episodic.saveEpisode({
+            goal,
+            results,
+            summary: `Completed goal: ${goal}`,
+            success: Object.values(results).every(r => r && r.success)
+          });
 
           this.memory.remember('system', `Goal completed: ${goal}`, { results });
           
