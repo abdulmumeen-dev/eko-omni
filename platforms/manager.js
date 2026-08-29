@@ -29,8 +29,6 @@ class PlatformManager {
     }
 
     try {
-      // In production: call platform handler
-      // For now: simulate
       const result = {
         success: true,
         platform,
@@ -62,8 +60,6 @@ class PlatformManager {
 
   // Get incoming messages (simulated)
   async receiveMessages(platform) {
-    // In production: webhooks or polling
-    // For now: return recent messages
     return this.messages.filter(m => !platform || m.platform === platform);
   }
 
