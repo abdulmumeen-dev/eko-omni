@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import Orchestrator from './brain/orchestrator.js';
+import { initializeAPI } from './api/server.js';
 
 console.log(`
 ╔═══════════════════════════════════════╗
@@ -25,22 +26,31 @@ console.log(`✅ Using LLM provider: ${provider}`);
 console.log(`✅ Model: ${process.env.LLM_MODEL || 'default'}`);
 console.log('Starting Orchestrator...\n');
 
+// Create EKO instance
 const eko = new Orchestrator();
+
+// Initialize API server
+console.log('🌐 Initializing API server...');
+initializeAPI(eko);
+
+// Start EKO
 eko.run().catch(err => {
   console.error('🔥 Fatal error:', err);
   process.exit(1);
 });
 
-process.on('SIGINT', () => {
+// Graceful shutdown
+process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down EKO gracefully...');
-  eko.running = false;
-  if (eko.memory) eko.memory.close();
+  await eko.shutdown();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('\n🛑 Shutting down EKO gracefully...');
-  eko.running = false;
-  if (eko.memory) eko.memory.close();
+  await eko.shutdown();
   process.exit(0);
 });
+
+// Export eko for API
+export { eko };
