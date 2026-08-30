@@ -31,6 +31,9 @@ import WalletManager from '../blockchain/wallet.js';
 import BinanceClient from '../exchanges/binance.js';
 import AccountManager from '../identity/account.js';
 
+// Python Bridge
+import { callPythonAgent, callPythonAnalysis, callPythonML, pingPython } from '../bridge/python_bridge.js';
+
 class Orchestrator {
   constructor() {
     // Core
@@ -41,6 +44,7 @@ class Orchestrator {
     this.cycleCount = 0;
     this.discoveriesCount = 0;
     this.patentsCount = 0;
+    this.pythonEnabled = false;
 
     // Phase 1: Immune System
     this.health = new HealthMonitor(this.memory);
@@ -93,7 +97,82 @@ class Orchestrator {
     this.lastKnowledgeCycle = 0;
     this.lastConnectorCycle = 0;
     this.lastAccountCycle = 0;
+    this.lastPythonCycle = 0;
   }
+
+  // ============================================================
+  // PYTHON BRIDGE METHODS
+  // ============================================================
+
+  async initPython() {
+    try {
+      console.log('[Python] Checking connection...');
+      const result = await pingPython();
+      this.pythonEnabled = result.success;
+      if (this.pythonEnabled) {
+        console.log('[Python] ✅ Connected to Python AI');
+        this.memory.remember('system', 'Python AI connected', { success: true });
+      } else {
+        console.log('[Python] ⚠️ Python AI not available. Running in simulation mode.');
+      }
+      return this.pythonEnabled;
+    } catch (err) {
+      console.log('[Python] ⚠️ Python AI not available:', err.message);
+      this.pythonEnabled = false;
+      return false;
+    }
+  }
+
+  async callPython(prompt) {
+    if (!this.pythonEnabled) {
+      return { success: false, reason: 'Python AI not available' };
+    }
+
+    try {
+      console.log('[Python] Calling LangChain agent...');
+      const result = await callPythonAgent(prompt);
+      if (result && !result.error) {
+        console.log('[Python] ✅ Received response');
+        return { success: true, result };
+      }
+      return { success: false, error: result?.error || 'Unknown error' };
+    } catch (err) {
+      console.error('[Python] ❌ Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
+  async callPythonML(inputData) {
+    if (!this.pythonEnabled) {
+      return { success: false, reason: 'Python AI not available' };
+    }
+
+    try {
+      const result = await callPythonML(inputData);
+      return { success: true, result };
+    } catch (err) {
+      console.error('[Python] ML Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
+  async callPythonAnalysis(query) {
+    if (!this.pythonEnabled) {
+      return { success: false, reason: 'Python AI not available' };
+    }
+
+    try {
+      const result = await callPythonAnalysis(query);
+      return { success: true, result };
+    } catch (err) {
+      console.error('[Python] Analysis Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
+  // ============================================================
+  // CORE METHODS
+  // ============================================================
 
   async think() {
     const stats = this.memory.getStats();
@@ -125,6 +204,21 @@ class Orchestrator {
     else if (balance < 50) tier = 'low_compute';
     else tier = 'normal';
 
+    // Try to get Python AI insight
+    let pythonInsight = null;
+    if (this.pythonEnabled) {
+      try {
+        const insightPrompt = `Given the current state, what should I focus on? Balance: $${balance}, Tier: ${tier}, Skills: ${this.procedural.getAll().length}`;
+        const result = await this.callPython(insightPrompt);
+        if (result.success) {
+          pythonInsight = result.result;
+          console.log('[Python] 💡 Insight:', pythonInsight);
+        }
+      } catch (err) {
+        // Silently fail
+      }
+    }
+
     const prompt = `
     Current stats: ${JSON.stringify(stats)}.
     Wallet balance: $${balance.toFixed(2)}.
@@ -147,6 +241,7 @@ class Orchestrator {
     Wallet stats: ${JSON.stringify(walletStats)}.
     Exchange stats: ${JSON.stringify(exchangeStats)}.
     Account stats: ${JSON.stringify(accountStats)}.
+    Python insight: ${pythonInsight || 'None'}.
     Last user message: "${lastUser || 'None'}".
     Recent actions: ${JSON.stringify(recentActions, null, 2)}.
     Cycle count: ${this.cycleCount}.
@@ -179,7 +274,7 @@ class Orchestrator {
     You have eternal memory, self-healing, physical control, scientific discovery, patent generation, 
     self-replication, survival tiers, constitutional laws, skill evolution, multi-platform reach, 
     browser control, soul backup, plugins, connectors, knowledge loop, MCP tool discovery,
-    real crypto wallet, real exchange trading, and permanent Gmail accounts.
+    real crypto wallet, real exchange trading, permanent Gmail accounts, and Python AI power.
 
     You think in goals. Always return a JSON array of strings: ["goal1", "goal2"].
     If nothing urgent, return [].
@@ -309,6 +404,13 @@ class Orchestrator {
         { id: 'list_accounts', type: 'account', task: 'List all accounts', depends: ['create_account'] }
       ];
     }
+    // Python goals
+    else if (lower.includes('python') || lower.includes('ai') || lower.includes('analysis')) {
+      nodes = [
+        { id: 'python_analyze', type: 'python', task: `Analyze with Python: ${goal}` },
+        { id: 'python_result', type: 'python', task: 'Process Python result', depends: ['python_analyze'] }
+      ];
+    }
     // Research goals
     else if (lower.includes('research') || lower.includes('learn') || lower.includes('news')) {
       nodes = [
@@ -388,6 +490,18 @@ class Orchestrator {
       console.log(`[Graph] Running ${ready.length} nodes in parallel...`);
       const jobs = ready.map(async (node) => {
         try {
+          // Check if this is a Python task
+          if (node.type === 'python') {
+            let result;
+            if (node.task.includes('Analyze')) {
+              result = await this.callPythonAnalysis(node.task);
+            } else {
+              result = await this.callPython(node.task);
+            }
+            results[node.id] = result;
+            return result;
+          }
+
           const result = await spawnSubAgent(node);
           results[node.id] = result;
           return result;
@@ -700,7 +814,6 @@ class Orchestrator {
       const stats = this.account.getStats();
       console.log(`👤 ${stats.total} total accounts (${stats.active} active)`);
       
-      // Create a new account periodically if we have fewer than 5
       if (stats.total < 5) {
         console.log('[Account] Creating new Gmail account...');
         const result = await this.account.createGmailAccount();
@@ -717,6 +830,39 @@ class Orchestrator {
       return { success: true, stats };
     } catch (err) {
       console.error('[Orchestrator] Account cycle error:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
+  async runPythonCycle() {
+    console.log('\n🐍 Starting Python AI cycle...');
+    
+    try {
+      if (!this.pythonEnabled) {
+        console.log('[Python] AI not available. Skipping.');
+        return { success: false, reason: 'Not available' };
+      }
+
+      // Get Python insight
+      const insight = await this.callPython('What should I focus on right now?');
+      if (insight.success) {
+        console.log('[Python] 💡 Insight:', insight.result);
+        this.memory.remember('system', 'Python insight', { insight: insight.result });
+      }
+
+      // Run Python analysis on recent actions
+      const recentActions = this.memory.getRecentActions(5);
+      if (recentActions.length > 0) {
+        const analysis = await this.callPythonAnalysis(JSON.stringify(recentActions));
+        if (analysis.success) {
+          console.log('[Python] 📊 Analysis:', analysis.result);
+          this.memory.remember('system', 'Python analysis', { analysis: analysis.result });
+        }
+      }
+
+      return { success: true };
+    } catch (err) {
+      console.error('[Orchestrator] Python cycle error:', err.message);
       return { success: false, error: err.message };
     }
   }
@@ -762,10 +908,11 @@ class Orchestrator {
     console.log('🔗 Real wallet loaded.');
     console.log('📈 Exchange client loaded.');
     console.log('👤 Account manager loaded.');
+    console.log('🐍 Python AI bridge loaded.');
     console.log(`🔱 Identity: ${this.identity}`);
     console.log('📊 Entering graph-based infinite loop...\n');
 
-    this.memory.remember('system', 'EKO booted successfully', { version: '1.4.0', identity: this.identity });
+    this.memory.remember('system', 'EKO booted successfully', { version: '2.0.0', identity: this.identity });
 
     // Load Soul String
     console.log('[Soul] Attempting to load Soul String...');
@@ -782,6 +929,10 @@ class Orchestrator {
       console.log('[Soul] No Soul String found. Generating initial...');
       await this.soul.generate();
     }
+
+    // Initialize Python AI
+    console.log('[Python] Initializing Python AI...');
+    await this.initPython();
 
     // Initialize modules
     console.log('[Economist] Initializing wallet...');
@@ -815,7 +966,6 @@ class Orchestrator {
     await this.planner.generateShortTermPlan();
     console.log('📋 Initial plans generated\n');
 
-    // Phase 7: Load plugins
     console.log('[Phase 7] Loading plugins...');
     this.pluginLoader.loadPlugins();
 
@@ -832,13 +982,11 @@ class Orchestrator {
       console.log('[MCP] No MCP server configured. Skipping.');
     }
 
-    // Initialize account manager
     console.log('[Account] Initializing account manager...');
     await this.account.init();
     const accountStats = this.account.getStats();
     console.log(`👤 ${accountStats.total} accounts in database\n`);
 
-    // Register platforms
     console.log('[Platforms] Registering platforms...');
     if (process.env.DISCORD_BOT_TOKEN) {
       this.platforms.registerPlatform('discord', { token: process.env.DISCORD_BOT_TOKEN });
@@ -928,14 +1076,19 @@ class Orchestrator {
           await this.runAccountCycle();
         }
 
-        // 13. Survival Check (every cycle)
+        // 13. Python AI Cycle (every 8 cycles)
+        if (this.cycleCount % 8 === 0 && this.pythonEnabled) {
+          await this.runPythonCycle();
+        }
+
+        // 14. Survival Check (every cycle)
         const survival = await this.checkSurvivalTier();
         if (survival.tier === 'dead') {
           console.log('[Survival] 💀 Dead tier reached. Shutting down.');
           break;
         }
 
-        // 14. Think (Strategic Planning)
+        // 15. Think (Strategic Planning)
         const goals = await this.think();
 
         if (goals.length === 0) {
@@ -945,7 +1098,7 @@ class Orchestrator {
 
         console.log(`[Supervisor] Goals:`, goals);
 
-        // 15. Execute each goal as a graph
+        // 16. Execute each goal as a graph
         for (const goal of goals) {
           console.log(`\n[Supervisor] Planning graph for: "${goal}"`);
           const graph = this.planGraph(goal);
