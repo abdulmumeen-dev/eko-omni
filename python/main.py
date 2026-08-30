@@ -11,7 +11,16 @@ def main():
     
     module_name = sys.argv[1]
     method_name = sys.argv[2]
-    params = json.loads(sys.argv[3]) if len(sys.argv) > 3 else {}
+    
+    # Handle params - try to parse JSON, if it fails, treat as string
+    params = {}
+    if len(sys.argv) > 3:
+        try:
+            # Try to parse as JSON
+            params = json.loads(sys.argv[3])
+        except json.JSONDecodeError:
+            # If it's not valid JSON, treat it as a string parameter
+            params = {"prompt": sys.argv[3]}
     
     try:
         # Import module dynamically
