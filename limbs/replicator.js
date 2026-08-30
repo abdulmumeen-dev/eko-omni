@@ -1,5 +1,7 @@
 // limbs/replicator.js
 import { callLLM } from './llm.js';
+import { SwarmManager } from '../swarm/manager.js';
+import { Specialist } from '../swarm/specialist.js';
 import fs from 'fs';
 import path from 'path';
 import { randomBytes } from 'crypto';
@@ -9,19 +11,47 @@ class Replicator {
     this.memory = memory;
     this.constitution = constitution;
     this.children = [];
+    this.specialists = {};
     this.maxChildren = 10;
     this.ready = false;
+
+    // Initialize Swarm
+    this.swarm = new SwarmManager(memory);
+    
+    // Load existing children
+    this.loadChildren();
+  }
+
+  // Load children from memory
+  loadChildren() {
+    try {
+      const memories = this.memory.search('child');
+      if (memories && memories.length > 0) {
+        for (const mem of memories) {
+          try {
+            const child = JSON.parse(mem.content);
+            if (child && child.id) {
+              this.children.push(child);
+            }
+          } catch {
+            // Skip invalid entries
+          }
+        }
+      }
+      console.log(`[Replicator] Loaded ${this.children.length} children from memory`);
+    } catch (err) {
+      console.error('[Replicator] Failed to load children:', err.message);
+    }
   }
 
   // Check if replicator is ready
   isReady() {
-    // Need sufficient resources to spawn a child
     const stats = this.memory.getStats();
     const balance = this.memory.walletBalance || 0;
     return balance > 50 && this.children.length < this.maxChildren;
   }
 
-  // Spawn a child agent
+  // Spawn a child agent (original method)
   async spawnChild(genesisPrompt, initialFunding = 10) {
     console.log(`[Replicator] Spawning child agent...`);
 
@@ -56,10 +86,11 @@ class Replicator {
       funding: initialFunding,
       status: 'initializing',
       parent: this.memory.identity || 'eko_parent',
+      role: 'general',
+      tasksCompleted: 0,
     };
 
-    // In production: Actually spin up a new sandbox/VM
-    // For now: Simulate
+    // Simulate child creation
     console.log(`[Replicator] Simulating child agent creation...`);
     await this.sleep(2000);
 
@@ -67,17 +98,95 @@ class Replicator {
 
     // Register child
     this.children.push(childConfig);
-
-    // Log to memory
-    this.memory.remember('system', 'Child spawned', {
-      childId: childId,
-      wallet: walletAddress,
-      funding: initialFunding,
-      genesis: genesisPrompt.slice(0, 100) + '...',
-    });
+    this.memory.remember('child', JSON.stringify(childConfig));
 
     console.log(`[Replicator] ✅ Child spawned: ${childId}`);
     return { success: true, child: childConfig };
+  }
+
+  // ============================================================
+  // SWARM METHODS
+  // ============================================================
+
+  // Spawn a specialist child
+  async spawnSpecialist(role, name = null) {
+    console.log(`[Replicator] Spawning specialist: ${role} (${name || 'unnamed'})`);
+
+    if (this.children.length >= this.maxChildren) {
+      return { success: false, error: 'Max children reached' };
+    }
+
+    const result = await this.swarm.spawnChild(role, name);
+    if (result.success) {
+      // Create specialist instance
+      const specialist = new Specialist(result.child, this.memory);
+      this.specialists[result.child.id] = specialist;
+
+      // Also add to children list
+      this.children.push(result.child);
+      this.memory.remember('child', JSON.stringify(result.child));
+
+      console.log(`[Replicator] ✅ Specialist spawned: ${result.child.name} (${role})`);
+    }
+    return result;
+  }
+
+  // Get a specialist by ID
+  getSpecialist(id) {
+    return this.specialists[id] || null;
+  }
+
+  // Get all specialists
+  getAllSpecialists() {
+    return Object.values(this.specialists);
+  }
+
+  // Get specialists by role
+  getSpecialistsByRole(role) {
+    return this.getAllSpecialists().filter(s => s.child.role === role);
+  }
+
+  // Delegate task to a specialist
+  async delegateTask(task, role, data = {}) {
+    console.log(`[Replicator] Delegating task to ${role}: ${task}`);
+
+    // Find a specialist with the matching role
+    const specialists = this.getSpecialistsByRole(role);
+    if (specialists.length === 0) {
+      // Auto-spawn if none exist and we have capacity
+      if (this.children.length < this.maxChildren) {
+        console.log(`[Replicator] No ${role} specialist found. Auto-spawning...`);
+        const spawnResult = await this.spawnSpecialist(role);
+        if (!spawnResult.success) {
+          return { success: false, error: `No ${role} specialist available and auto-spawn failed` };
+        }
+        // Get the newly spawned specialist
+        const newSpecialist = this.getSpecialistsByRole(role)[0];
+        if (!newSpecialist) {
+          return { success: false, error: 'Failed to auto-spawn specialist' };
+        }
+        return await newSpecialist.executeTask(task, data);
+      }
+      return { success: false, error: `No ${role} specialist available` };
+    }
+
+    // Use the first available specialist of this role
+    const specialist = specialists[0];
+    const result = await specialist.executeTask(task, data);
+
+    // Update swarm stats
+    await this.swarm.delegateTask(task, role, data);
+
+    return result;
+  }
+
+  // Delegate to a specific child by ID
+  async delegateToChild(childId, task, data = {}) {
+    const specialist = this.getSpecialist(childId);
+    if (!specialist) {
+      return { success: false, error: `Child ${childId} not found` };
+    }
+    return await specialist.executeTask(task, data);
   }
 
   // Generate Soul String (compressed identity + memory)
@@ -144,13 +253,10 @@ class Replicator {
     for (const child of this.children) {
       // Check child status
       if (child.status === 'active') {
-        // In production: Ping child, check health
-        // For now: Simulate
-        console.log(`[Replicator] Child ${child.id} is active.`);
+        console.log(`[Replicator] Child ${child.id} (${child.role}) is active.`);
       }
 
       if (child.status === 'critical') {
-        // Alert system
         console.log(`[Replicator] ⚠️ Child ${child.id} is in critical state.`);
         // Try to rescue or terminate
       }
@@ -163,14 +269,42 @@ class Replicator {
     return { children: this.children.length };
   }
 
+  // Get all children
+  getChildren() {
+    return this.children;
+  }
+
+  // Get child by ID
+  getChild(id) {
+    return this.children.find(c => c.id === id);
+  }
+
   // Get stats
   getStats() {
     return {
       totalChildren: this.children.length,
       maxChildren: this.maxChildren,
       ready: this.isReady(),
-      children: this.children.map(c => ({ id: c.id, status: c.status })),
+      specialists: Object.keys(this.specialists).length,
+      children: this.children.map(c => ({ 
+        id: c.id, 
+        name: c.name || c.id, 
+        role: c.role || 'general',
+        status: c.status 
+      })),
+      swarm: this.swarm.getStats()
     };
+  }
+
+  // Clean up dead children
+  cleanup() {
+    const alive = this.children.filter(c => c.status !== 'dead');
+    const removed = this.children.length - alive.length;
+    this.children = alive;
+    if (removed > 0) {
+      console.log(`[Replicator] Cleaned up ${removed} dead children`);
+    }
+    return removed;
   }
 
   sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
