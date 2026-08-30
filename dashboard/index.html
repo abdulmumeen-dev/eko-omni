@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🧠 EKO Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-gray-900 text-gray-100">
+
+    <!-- Header -->
+    <header class="bg-gray-800 border-b border-gray-700 p-4">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold flex items-center gap-2">
+                <span class="text-3xl">🧠</span> EKO Dashboard
+            </h1>
+            <div class="flex items-center gap-4">
+                <span id="status-badge" class="px-3 py-1 rounded-full text-sm bg-green-600">🟢 Running</span>
+                <span id="cycle-count" class="text-sm text-gray-400">Cycle: 0</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+        <!-- Wallet -->
+        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">💰 Wallet</h2>
+            <p id="wallet-balance" class="text-2xl font-bold mt-1">$0.00</p>
+            <p id="wallet-address" class="text-xs text-gray-500 truncate">0x...</p>
+        </div>
+
+        <!-- Status -->
+        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">📊 Stats</h2>
+            <div class="grid grid-cols-2 gap-2 mt-2">
+                <div><span class="text-xs text-gray-500">Cycles</span><br /><span id="stats-cycles" class="font-bold">0</span></div>
+                <div><span class="text-xs text-gray-500">Discoveries</span><br /><span id="stats-discoveries" class="font-bold">0</span></div>
+                <div><span class="text-xs text-gray-500">Patents</span><br /><span id="stats-patents" class="font-bold">0</span></div>
+                <div><span class="text-xs text-gray-500">Children</span><br /><span id="stats-children" class="font-bold">0</span></div>
+            </div>
+        </div>
+
+        <!-- Skills -->
+        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">🧠 Skills</h2>
+            <ul id="skills-list" class="mt-2 space-y-1 text-sm max-h-32 overflow-y-auto"></ul>
+            <p id="skills-count" class="text-xs text-gray-500 mt-2">0 skills</p>
+        </div>
+
+        <!-- Goals -->
+        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 col-span-1 md:col-span-2">
+            <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">🎯 Goals</h2>
+            <ul id="goals-list" class="mt-2 space-y-1 text-sm max-h-32 overflow-y-auto"></ul>
+        </div>
+
+        <!-- Memory -->
+        <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 col-span-1 md:col-span-3">
+            <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">📝 Recent Memory</h2>
+            <ul id="memory-list" class="mt-2 space-y-1 text-sm max-h-48 overflow-y-auto"></ul>
+        </div>
+
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
