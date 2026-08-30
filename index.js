@@ -2,6 +2,11 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+// ADD THIS DEBUG LINE:
+console.log('🔍 DEBUG: OPENAI_MODEL =', process.env.OPENAI_MODEL);
+console.log('🔍 DEBUG: LLM_MODEL =', process.env.LLM_MODEL);
+console.log('🔍 DEBUG: LLM_PROVIDER =', process.env.LLM_PROVIDER);
+
 import Orchestrator from './brain/orchestrator.js';
 import { initializeAPI } from './api/server.js';
 
