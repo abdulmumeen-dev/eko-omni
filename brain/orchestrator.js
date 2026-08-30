@@ -12,9 +12,9 @@ import Strategist from '../noesis/strategist.js';
 import CONSTITUTION from './constitution.js';
 import Replicator from '../limbs/replicator.js';
 import SoulString from '../soul/soul_string.js';
-import WorkingMemory from './memory/working.js';
-import EpisodicMemory from './memory/episodic.js';
-import ProceduralMemory from './memory/procedural.js';
+import WorkingMemory from '../memory/working.js';
+import EpisodicMemory from '../memory/episodic.js';
+import ProceduralMemory from '../memory/procedural.js';
 import SkillExtractor from '../skills/skill_extractor.js';
 import PlatformManager from '../platforms/manager.js';
 import Browser from '../limbs/browser.js';
@@ -25,6 +25,10 @@ import SkillLoader from '../skills/loader.js';
 import ConnectorManager from '../connectors/manager.js';
 import KnowledgeLoop from '../knowledge/loop.js';
 import MCPClient from '../mcp/client.js';
+
+// Phase 8 Imports
+import WalletManager from '../blockchain/wallet.js';
+import BinanceClient from '../exchanges/binance.js';
 
 class Orchestrator {
   constructor() {
@@ -72,6 +76,10 @@ class Orchestrator {
     this.knowledgeLoop = new KnowledgeLoop(this.memory, this.procedural);
     this.mcp = new MCPClient(this.memory);
 
+    // Phase 8: Real Wallet & Exchange
+    this.wallet = new WalletManager(this.memory);
+    this.exchange = new BinanceClient(this.memory);
+
     // Track cycle timing
     this.lastTradeCycle = 0;
     this.lastPhysicalCycle = 0;
@@ -81,6 +89,7 @@ class Orchestrator {
     this.lastSkillCycle = 0;
     this.lastPlatformCycle = 0;
     this.lastKnowledgeCycle = 0;
+    this.lastConnectorCycle = 0;
   }
 
   async think() {
@@ -102,6 +111,8 @@ class Orchestrator {
     const connectorStats = this.connectors.getStats();
     const knowledgeStats = this.knowledgeLoop.getStats();
     const mcpStats = this.mcp.getStats();
+    const walletStats = this.wallet.getStats();
+    const exchangeStats = this.exchange.getStats();
     const balance = this.walletBalance || 0;
 
     let tier = 'normal';
@@ -129,6 +140,8 @@ class Orchestrator {
     Connector stats: ${JSON.stringify(connectorStats)}.
     Knowledge stats: ${JSON.stringify(knowledgeStats)}.
     MCP stats: ${JSON.stringify(mcpStats)}.
+    Wallet stats: ${JSON.stringify(walletStats)}.
+    Exchange stats: ${JSON.stringify(exchangeStats)}.
     Last user message: "${lastUser || 'None'}".
     Recent actions: ${JSON.stringify(recentActions, null, 2)}.
     Cycle count: ${this.cycleCount}.
@@ -152,13 +165,15 @@ class Orchestrator {
     - Knowledge: ["Learn about quantum computing"], ["Find market opportunities"]
     - Plugins: ["Load plugin"], ["Execute plugin skill"]
     - Connectors: ["Fetch public APIs"], ["Connect to new service"]
+    - Trading: ["Get BTC price"], ["Place limit order"]
     If idle, return [].
     `;
 
-    const system = `You are EKO Supervisor (Phase 7 - Self-Sustaining AI). 
+    const system = `You are EKO Supervisor (Phase 8 - EKO 2.0). 
     You have eternal memory, self-healing, physical control, scientific discovery, patent generation, 
     self-replication, survival tiers, constitutional laws, skill evolution, multi-platform reach, 
-    browser control, soul backup, plugins, connectors, knowledge loop, and MCP tool discovery.
+    browser control, soul backup, plugins, connectors, knowledge loop, MCP tool discovery,
+    real crypto wallet, and real exchange trading.
 
     You think in goals. Always return a JSON array of strings: ["goal1", "goal2"].
     If nothing urgent, return [].
@@ -265,6 +280,20 @@ class Orchestrator {
       nodes = [
         { id: 'discover_tools', type: 'mcp', task: 'Discover MCP tools' },
         { id: 'execute_tool', type: 'mcp', task: `Execute tool: ${goal}`, depends: ['discover_tools'] }
+      ];
+    }
+    // Exchange goals
+    else if (lower.includes('btc') || lower.includes('eth') || lower.includes('price') || lower.includes('order')) {
+      nodes = [
+        { id: 'get_price', type: 'exchange', task: `Get price for ${goal}` },
+        { id: 'place_order', type: 'exchange', task: `Place order for ${goal}`, depends: ['get_price'] }
+      ];
+    }
+    // Wallet goals
+    else if (lower.includes('wallet') || lower.includes('balance') || lower.includes('send')) {
+      nodes = [
+        { id: 'check_wallet', type: 'wallet', task: 'Check wallet balance' },
+        { id: 'send_transaction', type: 'wallet', task: `Send: ${goal}`, depends: ['check_wallet'] }
       ];
     }
     // Research goals
@@ -425,6 +454,42 @@ class Orchestrator {
     } catch (err) {
       console.error('[Orchestrator] Trading cycle error:', err.message);
       this.memory.remember('system', 'Trading error', { error: err.message });
+      return { success: false, error: err.message };
+    }
+  }
+
+  async runRealTradingCycle() {
+    if (!this.exchange.initialized) {
+      console.log('[Exchange] Not initialized. Skipping real trading.');
+      return { success: false, reason: 'Not initialized' };
+    }
+
+    console.log('\n💰 Starting real trading cycle...');
+    
+    try {
+      // Get BTC price
+      const btcPrice = await this.exchange.getPrice('BTCUSDT');
+      if (btcPrice) {
+        console.log(`[Exchange] BTC/USDT: $${btcPrice}`);
+        this.memory.remember('market', 'BTC price', { price: btcPrice });
+      }
+
+      // Get ETH price
+      const ethPrice = await this.exchange.getPrice('ETHUSDT');
+      if (ethPrice) {
+        console.log(`[Exchange] ETH/USDT: $${ethPrice}`);
+        this.memory.remember('market', 'ETH price', { price: ethPrice });
+      }
+
+      // Check balance
+      const balances = await this.exchange.getBalance();
+      if (balances.length > 0) {
+        console.log(`[Exchange] ${balances.length} assets found`);
+      }
+
+      return { success: true, btcPrice, ethPrice, balances };
+    } catch (err) {
+      console.error('[Orchestrator] Real trading cycle error:', err.message);
       return { success: false, error: err.message };
     }
   }
@@ -613,7 +678,6 @@ class Orchestrator {
       console.log(`🔌 ${stats.totalAPIs} public APIs available`);
       console.log(`🔌 ${stats.connections} active connections`);
       
-      // Fetch fresh APIs if needed
       if (!this.connectors.publicAPI.lastFetch) {
         await this.connectors.init();
       }
@@ -664,10 +728,12 @@ class Orchestrator {
     console.log('🔌 Connector manager loaded.');
     console.log('🧠 Knowledge loop loaded.');
     console.log('🔧 MCP client loaded.');
+    console.log('🔗 Real wallet loaded.');
+    console.log('📈 Exchange client loaded.');
     console.log(`🔱 Identity: ${this.identity}`);
     console.log('📊 Entering graph-based infinite loop...\n');
 
-    this.memory.remember('system', 'EKO booted successfully', { version: '1.2.0', identity: this.identity });
+    this.memory.remember('system', 'EKO booted successfully', { version: '1.3.0', identity: this.identity });
 
     // Load Soul String
     console.log('[Soul] Attempting to load Soul String...');
@@ -690,6 +756,25 @@ class Orchestrator {
     await this.economist.initWallet();
     this.walletBalance = await this.economist.getBalance();
     console.log(`💰 Initial balance: $${this.walletBalance.toFixed(2)}\n`);
+
+    // Initialize real wallet
+    console.log('[Blockchain] Initializing real wallet...');
+    const walletResult = await this.wallet.init();
+    if (walletResult.success) {
+      console.log(`🔗 Real wallet: ${this.wallet.address}`);
+      console.log(`💰 ETH balance: ${this.wallet.balance} ETH`);
+    } else {
+      console.log('[Blockchain] ⚠️ Running in simulation mode.');
+    }
+
+    // Initialize exchange
+    console.log('[Exchange] Initializing exchange...');
+    const exchangeResult = await this.exchange.init();
+    if (exchangeResult.success) {
+      console.log('[Exchange] ✅ Connected to Binance');
+    } else {
+      console.log('[Exchange] ⚠️ Running in simulation mode.');
+    }
 
     console.log('[Physicist] Initializing physical world...');
     await this.physicist.init();
@@ -755,59 +840,64 @@ class Orchestrator {
           }
         }
 
-        // 2. Trading Cycle (every 5 cycles)
+        // 2. Simulated Trading Cycle (every 5 cycles)
         if (this.cycleCount % 5 === 0) {
           await this.runTradingCycle();
         }
 
-        // 3. Physical World Cycle (every 10 cycles)
+        // 3. Real Trading Cycle (every 3 cycles)
+        if (this.cycleCount % 3 === 0 && this.exchange.initialized) {
+          await this.runRealTradingCycle();
+        }
+
+        // 4. Physical World Cycle (every 10 cycles)
         if (this.cycleCount % 10 === 0) {
           await this.runPhysicalCycle();
         }
 
-        // 4. Strategic Cycle (every 20 cycles)
+        // 5. Strategic Cycle (every 20 cycles)
         if (this.cycleCount % 20 === 0) {
           await this.runStrategicCycle();
         }
 
-        // 5. Replication Cycle (every 15 cycles)
+        // 6. Replication Cycle (every 15 cycles)
         if (this.cycleCount % 15 === 0) {
           await this.runReplicationCycle();
         }
 
-        // 6. Soul Backup (every 30 cycles)
+        // 7. Soul Backup (every 30 cycles)
         if (this.cycleCount % 30 === 0) {
           await this.runSoulBackupCycle();
         }
 
-        // 7. Skill Extraction (every 25 cycles)
+        // 8. Skill Extraction (every 25 cycles)
         if (this.cycleCount % 25 === 0 && process.env.AUTO_SKILL_EXTRACTION === 'true') {
           await this.runSkillCycle();
         }
 
-        // 8. Platform Cycle (every 12 cycles)
+        // 9. Platform Cycle (every 12 cycles)
         if (this.cycleCount % 12 === 0) {
           await this.runPlatformCycle();
         }
 
-        // 9. Knowledge Loop (every 20 cycles)
+        // 10. Knowledge Loop (every 20 cycles)
         if (this.cycleCount % 20 === 0 && process.env.KNOWLEDGE_LOOP === 'true') {
           await this.runKnowledgeCycle();
         }
 
-        // 10. Connector Cycle (every 35 cycles)
+        // 11. Connector Cycle (every 35 cycles)
         if (this.cycleCount % 35 === 0) {
           await this.runConnectorCycle();
         }
 
-        // 11. Survival Check (every cycle)
+        // 12. Survival Check (every cycle)
         const survival = await this.checkSurvivalTier();
         if (survival.tier === 'dead') {
           console.log('[Survival] 💀 Dead tier reached. Shutting down.');
           break;
         }
 
-        // 12. Think (Strategic Planning)
+        // 13. Think (Strategic Planning)
         const goals = await this.think();
 
         if (goals.length === 0) {
@@ -817,7 +907,7 @@ class Orchestrator {
 
         console.log(`[Supervisor] Goals:`, goals);
 
-        // 13. Execute each goal as a graph
+        // 14. Execute each goal as a graph
         for (const goal of goals) {
           console.log(`\n[Supervisor] Planning graph for: "${goal}"`);
           const graph = this.planGraph(goal);
