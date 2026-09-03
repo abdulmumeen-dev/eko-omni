@@ -30,6 +30,10 @@ import MCPClient from '../mcp/client.js';
 import WalletManager from '../blockchain/wallet.js';
 import BinanceClient from '../exchanges/binance.js';
 import AccountManager from '../identity/account.js';
+import Persona from '../identity/persona.js';
+import ContextSwitcher from '../identity/context.js';
+import DocumentGenerator from '../identity/document.js';
+import CloneManager from '../identity/clone.js';
 
 // Python Bridge
 import { callPythonAgent, callPythonAnalysis, callPythonML, pingPython } from '../bridge/python_bridge.js';
@@ -85,7 +89,11 @@ class Orchestrator {
     this.wallet = new WalletManager(this.memory);
     this.exchange = new BinanceClient(this.memory);
     this.account = new AccountManager(this.memory, this.browser);
-
+    this.persona = new Persona(this.memory);
+    this.context = new ContextSwitcher(this.memory, this.persona);
+    this.documents = new DocumentGenerator(this.memory, this.persona, this.context);
+    this.cloneManager = new CloneManager(this.memory);
+    
     // Track cycle timing
     this.lastTradeCycle = 0;
     this.lastPhysicalCycle = 0;
@@ -911,6 +919,9 @@ class Orchestrator {
     console.log('🐍 Python AI bridge loaded.');
     console.log(`🔱 Identity: ${this.identity}`);
     console.log('📊 Entering graph-based infinite loop...\n');
+    console.log(`🧑 Persona: ${this.persona.getFullName()}`);
+    console.log(`📝 Bio: ${this.persona.getBio()}`);
+    console.log(`📄 ${this.cloneManager.getAllClones().length} clones available`);
 
     this.memory.remember('system', 'EKO booted successfully', { version: '2.0.0', identity: this.identity });
 
