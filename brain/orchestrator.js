@@ -1,10 +1,4 @@
 // brain/orchestrator.js
-import { JobScraper } from '../limbs/job_scraper.js';
-import { ApplicationEngine } from '../limbs/application_engine.js';
-import { CaptchaBreaker } from '../limbs/captcha_breaker.js';
-import { ApplicationTracker } from '../limbs/application_tracker.js';
-import { FollowupEngine } from '../limbs/followup_engine.js';
-import { GmailAutomation } from '../limbs/gmail_automation.js';
 import MemoryManager from './memory/manager.js';
 import { spawnSubAgent } from '../limbs/agent_runner.js';
 import { callLLM } from '../limbs/llm.js';
@@ -36,10 +30,20 @@ import MCPClient from '../mcp/client.js';
 import WalletManager from '../blockchain/wallet.js';
 import BinanceClient from '../exchanges/binance.js';
 import AccountManager from '../identity/account.js';
+
+// Phase 6: Humanized Brain
 import Persona from '../identity/persona.js';
 import ContextSwitcher from '../identity/context.js';
 import DocumentGenerator from '../identity/document.js';
 import CloneManager from '../identity/clone.js';
+
+// Job Seeking Modules
+import { JobScraper } from '../limbs/job_scraper.js';
+import { ApplicationEngine } from '../limbs/application_engine.js';
+import { CaptchaBreaker } from '../limbs/captcha_breaker.js';
+import { ApplicationTracker } from '../limbs/application_tracker.js';
+import { FollowupEngine } from '../limbs/followup_engine.js';
+import { GmailAutomation } from '../limbs/gmail_automation.js';
 
 // Python Bridge
 import { callPythonAgent, callPythonAnalysis, callPythonML, pingPython } from '../bridge/python_bridge.js';
@@ -84,6 +88,12 @@ class Orchestrator {
     this.platforms = new PlatformManager(this.memory);
     this.browser = new Browser(this.memory);
 
+    // Phase 6: Humanized Brain
+    this.persona = new Persona(this.memory);
+    this.context = new ContextSwitcher(this.memory, this.persona);
+    this.documents = new DocumentGenerator(this.memory, this.persona, this.context);
+    this.cloneManager = new CloneManager(this.memory);
+
     // Phase 7: Plugins, Skills, Connectors, Knowledge Loop, MCP
     this.pluginLoader = new PluginLoader(this.memory);
     this.skillLoader = new SkillLoader(this.memory, this.procedural);
@@ -95,10 +105,6 @@ class Orchestrator {
     this.wallet = new WalletManager(this.memory);
     this.exchange = new BinanceClient(this.memory);
     this.account = new AccountManager(this.memory, this.browser);
-    this.persona = new Persona(this.memory);
-    this.context = new ContextSwitcher(this.memory, this.persona);
-    this.documents = new DocumentGenerator(this.memory, this.persona, this.context);
-    this.cloneManager = new CloneManager(this.memory);
 
     // Job Seeking Modules
     this.jobScraper = new JobScraper(this.memory, this.browser);
@@ -107,7 +113,7 @@ class Orchestrator {
     this.applicationTracker = new ApplicationTracker(this.memory);
     this.gmail = new GmailAutomation(this.memory);
     this.followupEngine = new FollowupEngine(this.memory, this.gmail);
-    
+
     // Track cycle timing
     this.lastTradeCycle = 0;
     this.lastPhysicalCycle = 0;
@@ -120,6 +126,53 @@ class Orchestrator {
     this.lastConnectorCycle = 0;
     this.lastAccountCycle = 0;
     this.lastPythonCycle = 0;
+    this.lastJobCycle = 0;
+  }
+
+  // ============================================================
+  // JOB SEEKING CYCLE
+  // ============================================================
+
+  async runJobCycle() {
+    console.log('\n💼 Starting job seeking cycle...');
+    
+    try {
+      // 1. Search for jobs
+      const jobs = await this.jobScraper.search('software engineer', 'remote');
+      console.log(`[JobCycle] Found ${jobs.length} jobs`);
+      
+      if (jobs.length === 0) {
+        console.log('[JobCycle] No jobs found, skipping application');
+        return;
+      }
+      
+      // 2. Apply to each job
+      for (const job of jobs) {
+        const jobDetails = await this.jobScraper.parseDescription(job.link);
+        if (!jobDetails) continue;
+        
+        const result = await this.applicationEngine.apply(jobDetails);
+        
+        if (result.success) {
+          this.applicationTracker.addApplication(jobDetails);
+          console.log(`[JobCycle] ✅ Applied to ${jobDetails.title} at ${jobDetails.company}`);
+        } else {
+          console.log(`[JobCycle] ❌ Failed to apply to ${jobDetails.title}`);
+        }
+        
+        await this.sleep(5000);
+      }
+      
+      // 3. Check for follow-ups
+      await this.followupEngine.checkFollowups();
+      
+      // 4. Track applications summary
+      const stats = this.applicationTracker.getStats();
+      console.log(`[JobCycle] Application stats: ${JSON.stringify(stats)}`);
+      
+    } catch (error) {
+      console.error('[JobCycle] Error in job cycle:', error.message);
+    }
   }
 
   // ============================================================
@@ -218,6 +271,9 @@ class Orchestrator {
     const walletStats = this.wallet.getStats();
     const exchangeStats = this.exchange.getStats();
     const accountStats = this.account.getStats();
+    const personaSummary = this.persona.getSummary();
+    const applicationStats = this.applicationTracker.getStats();
+    const gmailStats = this.gmail.getStats();
     const balance = this.walletBalance || 0;
 
     let tier = 'normal';
@@ -226,7 +282,6 @@ class Orchestrator {
     else if (balance < 50) tier = 'low_compute';
     else tier = 'normal';
 
-    // Try to get Python AI insight
     let pythonInsight = null;
     if (this.pythonEnabled) {
       try {
@@ -246,6 +301,7 @@ class Orchestrator {
     Wallet balance: $${balance.toFixed(2)}.
     Survival tier: ${tier}.
     Identity: ${this.identity}.
+    Persona: ${JSON.stringify(personaSummary)}.
     Trading stats: ${JSON.stringify(econStats)}.
     Physical stats: ${JSON.stringify(physStats)}.
     Strategic stats: ${JSON.stringify(strategistStats)}.
@@ -263,6 +319,8 @@ class Orchestrator {
     Wallet stats: ${JSON.stringify(walletStats)}.
     Exchange stats: ${JSON.stringify(exchangeStats)}.
     Account stats: ${JSON.stringify(accountStats)}.
+    Application stats: ${JSON.stringify(applicationStats)}.
+    Gmail stats: ${JSON.stringify(gmailStats)}.
     Python insight: ${pythonInsight || 'None'}.
     Last user message: "${lastUser || 'None'}".
     Recent actions: ${JSON.stringify(recentActions, null, 2)}.
@@ -289,6 +347,8 @@ class Orchestrator {
     - Connectors: ["Fetch public APIs"], ["Connect to new service"]
     - Trading: ["Get BTC price"], ["Place limit order"]
     - Accounts: ["Create new Gmail account"], ["List all accounts"], ["Use account for service"]
+    - Jobs: ["Search for jobs"], ["Apply to jobs"], ["Follow up on applications"]
+    - Persona: ["Update my identity"], ["Generate CV"], ["Write cover letter"]
     If idle, return [].
     `;
 
@@ -296,7 +356,8 @@ class Orchestrator {
     You have eternal memory, self-healing, physical control, scientific discovery, patent generation, 
     self-replication, survival tiers, constitutional laws, skill evolution, multi-platform reach, 
     browser control, soul backup, plugins, connectors, knowledge loop, MCP tool discovery,
-    real crypto wallet, real exchange trading, permanent Gmail accounts, and Python AI power.
+    real crypto wallet, real exchange trading, permanent Gmail accounts, a humanized persona,
+    document generation, and autonomous job seeking capabilities.
 
     You think in goals. Always return a JSON array of strings: ["goal1", "goal2"].
     If nothing urgent, return [].
@@ -426,6 +487,21 @@ class Orchestrator {
         { id: 'list_accounts', type: 'account', task: 'List all accounts', depends: ['create_account'] }
       ];
     }
+    // Persona goals
+    else if (lower.includes('persona') || lower.includes('identity') || lower.includes('cv') || lower.includes('resume')) {
+      nodes = [
+        { id: 'generate_cv', type: 'document', task: 'Generate CV' },
+        { id: 'generate_cover_letter', type: 'document', task: 'Generate cover letter', depends: ['generate_cv'] }
+      ];
+    }
+    // Job goals
+    else if (lower.includes('job') || lower.includes('apply') || lower.includes('work')) {
+      nodes = [
+        { id: 'search_jobs', type: 'job', task: `Search for jobs: ${goal}` },
+        { id: 'apply_jobs', type: 'job', task: 'Apply to jobs', depends: ['search_jobs'] },
+        { id: 'track_applications', type: 'job', task: 'Track applications', depends: ['apply_jobs'] }
+      ];
+    }
     // Python goals
     else if (lower.includes('python') || lower.includes('ai') || lower.includes('analysis')) {
       nodes = [
@@ -512,13 +588,32 @@ class Orchestrator {
       console.log(`[Graph] Running ${ready.length} nodes in parallel...`);
       const jobs = ready.map(async (node) => {
         try {
-          // Check if this is a Python task
-          if (node.type === 'python') {
+          // Check for special node types
+          if (node.type === 'job') {
             let result;
-            if (node.task.includes('Analyze')) {
-              result = await this.callPythonAnalysis(node.task);
+            if (node.task.includes('Search')) {
+              result = await this.jobScraper.search('software engineer', 'remote');
+            } else if (node.task.includes('Apply')) {
+              const jobs = await this.jobScraper.search('software engineer', 'remote');
+              for (const job of jobs.slice(0, 3)) {
+                await this.applicationEngine.apply(job);
+              }
+              result = { success: true };
             } else {
-              result = await this.callPython(node.task);
+              result = this.applicationTracker.getStats();
+            }
+            results[node.id] = result;
+            return result;
+          }
+
+          if (node.type === 'document') {
+            let result;
+            if (node.task.includes('CV')) {
+              result = this.documents.generateCV();
+            } else if (node.task.includes('cover letter')) {
+              result = this.documents.generateCoverLetter('Software Engineer', 'Tech Corp');
+            } else {
+              result = this.documents.generateBio();
             }
             results[node.id] = result;
             return result;
@@ -865,14 +960,12 @@ class Orchestrator {
         return { success: false, reason: 'Not available' };
       }
 
-      // Get Python insight
       const insight = await this.callPython('What should I focus on right now?');
       if (insight.success) {
         console.log('[Python] 💡 Insight:', insight.result);
         this.memory.remember('system', 'Python insight', { insight: insight.result });
       }
 
-      // Run Python analysis on recent actions
       const recentActions = this.memory.getRecentActions(5);
       if (recentActions.length > 0) {
         const analysis = await this.callPythonAnalysis(JSON.stringify(recentActions));
@@ -930,14 +1023,17 @@ class Orchestrator {
     console.log('🔗 Real wallet loaded.');
     console.log('📈 Exchange client loaded.');
     console.log('👤 Account manager loaded.');
+    console.log('🧑 Persona loaded.');
+    console.log('📄 Document generator loaded.');
+    console.log('💼 Job seeking modules loaded.');
     console.log('🐍 Python AI bridge loaded.');
     console.log(`🔱 Identity: ${this.identity}`);
-    console.log('📊 Entering graph-based infinite loop...\n');
     console.log(`🧑 Persona: ${this.persona.getFullName()}`);
     console.log(`📝 Bio: ${this.persona.getBio()}`);
     console.log(`📄 ${this.cloneManager.getAllClones().length} clones available`);
+    console.log('📊 Entering graph-based infinite loop...\n');
 
-    this.memory.remember('system', 'EKO booted successfully', { version: '2.0.0', identity: this.identity });
+    this.memory.remember('system', 'EKO booted successfully', { version: '2.0.0', identity: this.identity, persona: this.persona.getSummary() });
 
     // Load Soul String
     console.log('[Soul] Attempting to load Soul String...');
@@ -1106,20 +1202,19 @@ class Orchestrator {
           await this.runPythonCycle();
         }
 
-        // Job Seeking Module
+        // 14. Job Seeking Cycle (every 60 cycles)
         if (this.cycleCount % 60 === 0 && this.cycleCount > 0) {
-          console.log('\n💼 Starting job seeking cycle...');
           await this.runJobCycle();
         }
 
-        // 14. Survival Check (every cycle)
+        // 15. Survival Check (every cycle)
         const survival = await this.checkSurvivalTier();
         if (survival.tier === 'dead') {
           console.log('[Survival] 💀 Dead tier reached. Shutting down.');
           break;
         }
 
-        // 15. Think (Strategic Planning)
+        // 16. Think (Strategic Planning)
         const goals = await this.think();
 
         if (goals.length === 0) {
@@ -1129,7 +1224,7 @@ class Orchestrator {
 
         console.log(`[Supervisor] Goals:`, goals);
 
-        // 16. Execute each goal as a graph
+        // 17. Execute each goal as a graph
         for (const goal of goals) {
           console.log(`\n[Supervisor] Planning graph for: "${goal}"`);
           const graph = this.planGraph(goal);
