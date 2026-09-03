@@ -1,4 +1,10 @@
 // brain/orchestrator.js
+import { JobScraper } from '../limbs/job_scraper.js';
+import { ApplicationEngine } from '../limbs/application_engine.js';
+import { CaptchaBreaker } from '../limbs/captcha_breaker.js';
+import { ApplicationTracker } from '../limbs/application_tracker.js';
+import { FollowupEngine } from '../limbs/followup_engine.js';
+import { GmailAutomation } from '../limbs/gmail_automation.js';
 import MemoryManager from './memory/manager.js';
 import { spawnSubAgent } from '../limbs/agent_runner.js';
 import { callLLM } from '../limbs/llm.js';
@@ -93,6 +99,14 @@ class Orchestrator {
     this.context = new ContextSwitcher(this.memory, this.persona);
     this.documents = new DocumentGenerator(this.memory, this.persona, this.context);
     this.cloneManager = new CloneManager(this.memory);
+
+    // Job Seeking Modules
+    this.jobScraper = new JobScraper(this.memory, this.browser);
+    this.applicationEngine = new ApplicationEngine(this.memory, this.browser, this.persona, this.documents);
+    this.captchaBreaker = new CaptchaBreaker(this.memory);
+    this.applicationTracker = new ApplicationTracker(this.memory);
+    this.gmail = new GmailAutomation(this.memory);
+    this.followupEngine = new FollowupEngine(this.memory, this.gmail);
     
     // Track cycle timing
     this.lastTradeCycle = 0;
@@ -1090,6 +1104,12 @@ class Orchestrator {
         // 13. Python AI Cycle (every 8 cycles)
         if (this.cycleCount % 8 === 0 && this.pythonEnabled) {
           await this.runPythonCycle();
+        }
+
+        // Job Seeking Module
+        if (this.cycleCount % 60 === 0 && this.cycleCount > 0) {
+          console.log('\n💼 Starting job seeking cycle...');
+          await this.runJobCycle();
         }
 
         // 14. Survival Check (every cycle)
