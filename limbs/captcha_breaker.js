@@ -1,92 +1,113 @@
-// limbs/application_engine.js
-export class ApplicationEngine {
-  constructor(memory, browser, persona, documentGenerator) {
+// limbs/captcha_breaker.js
+import axios from 'axios';
+
+export class CaptchaBreaker {
+  constructor(memory) {
     this.memory = memory;
-    this.browser = browser;
-    this.persona = persona;
-    this.documents = documentGenerator;
+    this.fallbackKey = process.env.CAPTCHA_API_KEY;
+    this.solvedCount = 0;
   }
 
-  async apply(job) {
-    console.log(`[ApplicationEngine] Applying to: ${job.title} at ${job.company}`);
-    
+  async solve(siteKey, pageUrl) {
+    console.log(`[CaptchaBreaker] Solving CAPTCHA for ${pageUrl}`);
+
+    // Try local solver first (simplified)
     try {
-      // 1. Generate tailored documents
-      const cv = this.documents.generateCV();
-      const coverLetter = this.documents.generateCoverLetter(job.title, job.company, job.description);
-      
-      // 2. Open application form
-      if (job.applyUrl) {
-        await this.browser.open(job.applyUrl);
-      } else {
-        // If no direct apply URL, search for application page
-        await this.browser.open(job.link + '/apply');
+      const localSolution = await this.tryLocalSolver(siteKey, pageUrl);
+      if (localSolution) {
+        this.solvedCount++;
+        this.memory.remember('captcha', JSON.stringify({
+          type: 'local',
+          siteKey,
+          pageUrl,
+          solved: true,
+          timestamp: new Date().toISOString()
+        }));
+        return localSolution;
       }
-      
-      await this.sleep(2000);
-      
-      // 3. Fill form with Persona data
-      const personaData = this.persona.getPersona();
-      await this.fillForm(personaData);
-      
-      // 4. Upload CV
-      // In production, you'd generate a PDF and upload it
-      // For now, simulate upload
-      console.log('[ApplicationEngine] Uploading CV...');
-      
-      // 5. Write cover letter
-      console.log('[ApplicationEngine] Writing cover letter...');
-      
-      // 6. Submit
-      console.log('[ApplicationEngine] Submitting application...');
-      // await this.browser.click('#submit');
-      
-      // 7. Track application
-      this.memory.remember('application', JSON.stringify({
-        job: job,
-        status: 'submitted',
-        timestamp: new Date().toISOString(),
-        coverLetter: coverLetter
-      }));
-      
-      return { success: true, job: job };
     } catch (error) {
-      console.error('[ApplicationEngine] Error applying:', error.message);
-      return { success: false, error: error.message };
+      console.log('[CaptchaBreaker] Local solver failed, using fallback');
     }
-  }
 
-  async fillForm(personaData) {
-    // Example form filling logic
-    try {
-      // Fill name fields
-      // await this.browser.type('#first-name', personaData.name);
-      // await this.browser.type('#last-name', personaData.surname);
-      
-      // Fill email
-      // await this.browser.type('#email', personaData.email || 'eko.agent@example.com');
-      
-      // Fill phone
-      // await this.browser.type('#phone', personaData.phone || '+1234567890');
-      
-      // Fill location
-      // await this.browser.type('#location', personaData.location || 'Remote');
-      
-      console.log('[ApplicationEngine] Form filled successfully');
-    } catch (error) {
-      console.error('[ApplicationEngine] Error filling form:', error.message);
-    }
-  }
-
-  async trackApplications() {
-    const apps = this.memory.search('application');
-    return apps.map(a => {
+    // Fallback to 2captcha
+    if (this.fallbackKey) {
       try {
-        return JSON.parse(a.content);
-      } catch {
-        return null;
+        const token = await this.solveWith2Captcha(siteKey, pageUrl);
+        if (token) {
+          this.solvedCount++;
+          this.memory.remember('captcha', JSON.stringify({
+            type: '2captcha',
+            siteKey,
+            pageUrl,
+            solved: true,
+            timestamp: new Date().toISOString()
+          }));
+          return token;
+        }
+      } catch (error) {
+        console.error('[CaptchaBreaker] 2captcha failed:', error.message);
       }
-    }).filter(Boolean);
+    }
+
+    console.error('[CaptchaBreaker] All CAPTCHA methods failed');
+    return null;
+  }
+
+  async tryLocalSolver(siteKey, pageUrl) {
+    // Simplified local solver
+    // In production, you'd use a real local solver like AICaptcha
+    return null;
+  }
+
+  async solveWith2Captcha(siteKey, pageUrl) {
+    if (!this.fallbackKey) {
+      throw new Error('No 2captcha API key');
+    }
+
+    // Submit CAPTCHA to 2captcha
+    const submitResponse = await axios.post('https://2captcha.com/in.php', {
+      key: this.fallbackKey,
+      method: 'userrecaptcha',
+      googlekey: siteKey,
+      pageurl: pageUrl,
+      json: 1
+    });
+
+    if (submitResponse.data.status !== 1) {
+      throw new Error(submitResponse.data.request || '2captcha submission failed');
+    }
+
+    const requestId = submitResponse.data.request;
+
+    // Poll for solution
+    for (let i = 0; i < 30; i++) {
+      await this.sleep(5000);
+      const resultResponse = await axios.get('https://2captcha.com/res.php', {
+        params: {
+          key: this.fallbackKey,
+          action: 'get',
+          id: requestId,
+          json: 1
+        }
+      });
+
+      if (resultResponse.data.status === 1) {
+        return resultResponse.data.request;
+      }
+
+      if (resultResponse.data.request !== 'CAPCHA_NOT_READY') {
+        throw new Error(resultResponse.data.request || '2captcha solving failed');
+      }
+    }
+
+    throw new Error('2captcha timeout');
+  }
+
+  getStats() {
+    return {
+      solved: this.solvedCount,
+      provider: this.fallbackKey ? '2captcha' : 'none'
+    };
   }
 
   sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
