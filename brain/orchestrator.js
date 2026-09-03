@@ -110,6 +110,7 @@ class Orchestrator {
     this.jobScraper = new JobScraper(this.memory, this.browser);
     this.applicationEngine = new ApplicationEngine(this.memory, this.browser, this.persona, this.documents);
     this.captchaBreaker = new CaptchaBreaker(this.memory);
+    this.captchaBreaker = new CaptchaBreaker(this.memory);
     this.applicationTracker = new ApplicationTracker(this.memory);
     this.gmail = new GmailAutomation(this.memory);
     this.followupEngine = new FollowupEngine(this.memory, this.gmail);
