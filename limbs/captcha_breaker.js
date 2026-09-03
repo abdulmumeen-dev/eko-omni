@@ -112,3 +112,95 @@ export class CaptchaBreaker {
 
   sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 }
+
+// limbs/captcha_breaker.js
+import { solveCaptchaFile, solveCaptchaURL, solveCaptchaOnPage } from '../bridge/captcha_bridge.js';
+
+export class CaptchaBreaker {
+  constructor(memory) {
+    this.memory = memory;
+    this.solvedCount = 0;
+    this.fallbackKey = process.env.CAPTCHA_API_KEY;
+    this.useFreeSolver = true; // Try free solver first
+  }
+
+  async solve(siteKey, pageUrl, imagePath = null) {
+    console.log(`[CaptchaBreaker] Solving CAPTCHA...`);
+
+    // Strategy 1: Free local solver (if we have an image)
+    if (this.useFreeSolver && imagePath) {
+      try {
+        console.log('[CaptchaBreaker] Trying free local solver...');
+        const result = await solveCaptchaFile(imagePath);
+        if (result && result.success) {
+          this.solvedCount++;
+          this.memory.remember('captcha', JSON.stringify({
+            method: 'free_local',
+            solved: true,
+            timestamp: new Date().toISOString()
+          }));
+          console.log('[CaptchaBreaker] ✅ Free solver worked!');
+          return result.text;
+        }
+      } catch (error) {
+        console.log('[CaptchaBreaker] Free solver failed:', error.message);
+      }
+    }
+
+    // Strategy 2: Free solver on page (Playwright)
+    if (this.useFreeSolver && pageUrl) {
+      try {
+        console.log('[CaptchaBreaker] Trying free page solver...');
+        const result = await solveCaptchaOnPage(pageUrl);
+        if (result && result.success && result.solved) {
+          this.solvedCount++;
+          this.memory.remember('captcha', JSON.stringify({
+            method: 'free_page',
+            solved: true,
+            timestamp: new Date().toISOString()
+          }));
+          console.log('[CaptchaBreaker] ✅ Free page solver worked!');
+          return 'solved';
+        }
+      } catch (error) {
+        console.log('[CaptchaBreaker] Free page solver failed:', error.message);
+      }
+    }
+
+    // Strategy 3: Fallback to 2captcha
+    if (this.fallbackKey) {
+      try {
+        console.log('[CaptchaBreaker] Falling back to 2captcha...');
+        const token = await this.solveWith2Captcha(siteKey, pageUrl);
+        if (token) {
+          this.solvedCount++;
+          this.memory.remember('captcha', JSON.stringify({
+            method: '2captcha',
+            solved: true,
+            timestamp: new Date().toISOString()
+          }));
+          console.log('[CaptchaBreaker] ✅ 2captcha worked!');
+          return token;
+        }
+      } catch (error) {
+        console.error('[CaptchaBreaker] 2captcha failed:', error.message);
+      }
+    }
+
+    console.error('[CaptchaBreaker] ❌ All CAPTCHA methods failed');
+    return null;
+  }
+
+  async solveWith2Captcha(siteKey, pageUrl) {
+    // ... existing 2captcha code ...
+    // (keeping the existing implementation)
+  }
+
+  getStats() {
+    return {
+      solved: this.solvedCount,
+      method: this.useFreeSolver ? 'free + fallback' : 'fallback only',
+      hasFallback: !!this.fallbackKey
+    };
+  }
+}
