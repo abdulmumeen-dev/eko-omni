@@ -45,6 +45,9 @@ import { ApplicationTracker } from '../limbs/application_tracker.js';
 import { FollowupEngine } from '../limbs/followup_engine.js';
 import { GmailAutomation } from '../limbs/gmail_automation.js';
 
+// Self-Builder Module
+import { SelfBuilder } from '../limbs/self_builder.js';
+
 // Python Bridge
 import { callPythonAgent, callPythonAnalysis, callPythonML, pingPython } from '../bridge/python_bridge.js';
 
@@ -110,10 +113,12 @@ class Orchestrator {
     this.jobScraper = new JobScraper(this.memory, this.browser);
     this.applicationEngine = new ApplicationEngine(this.memory, this.browser, this.persona, this.documents);
     this.captchaBreaker = new CaptchaBreaker(this.memory);
-    this.captchaBreaker = new CaptchaBreaker(this.memory);
     this.applicationTracker = new ApplicationTracker(this.memory);
     this.gmail = new GmailAutomation(this.memory);
     this.followupEngine = new FollowupEngine(this.memory, this.gmail);
+
+    // Self-Builder Module
+    this.selfBuilder = new SelfBuilder(this.memory);
 
     // Track cycle timing
     this.lastTradeCycle = 0;
@@ -128,6 +133,7 @@ class Orchestrator {
     this.lastAccountCycle = 0;
     this.lastPythonCycle = 0;
     this.lastJobCycle = 0;
+    this.lastBuildCycle = 0;
   }
 
   // ============================================================
@@ -138,7 +144,6 @@ class Orchestrator {
     console.log('\n💼 Starting job seeking cycle...');
     
     try {
-      // 1. Search for jobs
       const jobs = await this.jobScraper.search('software engineer', 'remote');
       console.log(`[JobCycle] Found ${jobs.length} jobs`);
       
@@ -147,7 +152,6 @@ class Orchestrator {
         return;
       }
       
-      // 2. Apply to each job
       for (const job of jobs) {
         const jobDetails = await this.jobScraper.parseDescription(job.link);
         if (!jobDetails) continue;
@@ -164,16 +168,70 @@ class Orchestrator {
         await this.sleep(5000);
       }
       
-      // 3. Check for follow-ups
       await this.followupEngine.checkFollowups();
       
-      // 4. Track applications summary
       const stats = this.applicationTracker.getStats();
       console.log(`[JobCycle] Application stats: ${JSON.stringify(stats)}`);
       
     } catch (error) {
       console.error('[JobCycle] Error in job cycle:', error.message);
     }
+  }
+
+  // ============================================================
+  // SELF-BUILDER CYCLE
+  // ============================================================
+
+  async runBuildCycle() {
+    console.log('\n🔧 Starting self-build cycle...');
+    
+    try {
+      // Check if we need to build a tool
+      const needs = await this.identifyNeeds();
+      if (needs.length === 0) {
+        console.log('[SelfBuilder] No new tools needed');
+        return;
+      }
+
+      for (const need of needs.slice(0, 1)) {
+        console.log(`[SelfBuilder] Building tool for: ${need}`);
+        const result = await this.selfBuilder.buildTool(need);
+        if (result.success) {
+          console.log(`[SelfBuilder] ✅ Built: ${result.module}`);
+          this.memory.remember('system', `Built tool: ${result.module}`, { result });
+        } else {
+          console.log(`[SelfBuilder] ❌ Failed: ${result.reason}`);
+        }
+      }
+    } catch (error) {
+      console.error('[SelfBuilder] Error in build cycle:', error.message);
+    }
+  }
+
+  async identifyNeeds() {
+    // Check if EKO has any limitations
+    const needs = [];
+    
+    // Check for missing capabilities
+    const tools = this.selfBuilder.getTools();
+    if (tools.length === 0) {
+      needs.push('captcha solver');
+      needs.push('web scraper');
+      needs.push('data parser');
+    }
+    
+    // Check memory for gaps
+    const gaps = this.memory.search('gap');
+    if (gaps.length > 0) {
+      for (const gap of gaps.slice(0, 2)) {
+        try {
+          const parsed = JSON.parse(gap.content);
+          if (parsed.topic) needs.push(parsed.topic);
+        } catch {}
+      }
+    }
+    
+    return needs;
   }
 
   // ============================================================
@@ -275,6 +333,7 @@ class Orchestrator {
     const personaSummary = this.persona.getSummary();
     const applicationStats = this.applicationTracker.getStats();
     const gmailStats = this.gmail.getStats();
+    const tools = this.selfBuilder.getTools();
     const balance = this.walletBalance || 0;
 
     let tier = 'normal';
@@ -292,9 +351,7 @@ class Orchestrator {
           pythonInsight = result.result;
           console.log('[Python] 💡 Insight:', pythonInsight);
         }
-      } catch (err) {
-        // Silently fail
-      }
+      } catch (err) {}
     }
 
     const prompt = `
@@ -322,6 +379,7 @@ class Orchestrator {
     Account stats: ${JSON.stringify(accountStats)}.
     Application stats: ${JSON.stringify(applicationStats)}.
     Gmail stats: ${JSON.stringify(gmailStats)}.
+    Tools built: ${tools.length ? tools.map(t => t.name).join(', ') : 'None'}.
     Python insight: ${pythonInsight || 'None'}.
     Last user message: "${lastUser || 'None'}".
     Recent actions: ${JSON.stringify(recentActions, null, 2)}.
@@ -332,24 +390,23 @@ class Orchestrator {
     Skills: ${this.procedural.getAll().length}.
 
     What should I do next? Return as JSON array of goal strings.
-    Examples: 
+    Examples:
     - Financial: ["Check crypto arbitrage"], ["Analyze market trends"]
-    - Physical: ["Print a 3D model"], ["Control smart home lights"], ["Deploy DePIN compute"]
-    - Development: ["Optimize my own code"], ["Fix a bug"], ["Write a new tool"]
+    - Physical: ["Print a 3D model"], ["Control smart home lights"]
+    - Development: ["Optimize my own code"], ["Fix a bug"]
     - Research: ["Research AI news"], ["Learn about new technologies"]
-    - Strategic: ["Generate patents"], ["Analyze trends"], ["Update long-term plan"]
+    - Strategic: ["Generate patents"], ["Analyze trends"]
     - Replication: ["Spawn a child agent"], ["Manage children"]
     - Survival: ["Increase wallet balance"], ["Reduce compute usage"]
     - Skills: ["Extract new skills"], ["Improve existing skills"]
     - Platforms: ["Check messages"], ["Send updates"]
     - Browser: ["Search the web"], ["Extract data from a page"]
     - Knowledge: ["Learn about quantum computing"], ["Find market opportunities"]
-    - Plugins: ["Load plugin"], ["Execute plugin skill"]
-    - Connectors: ["Fetch public APIs"], ["Connect to new service"]
     - Trading: ["Get BTC price"], ["Place limit order"]
-    - Accounts: ["Create new Gmail account"], ["List all accounts"], ["Use account for service"]
+    - Accounts: ["Create new Gmail account"], ["List all accounts"]
     - Jobs: ["Search for jobs"], ["Apply to jobs"], ["Follow up on applications"]
     - Persona: ["Update my identity"], ["Generate CV"], ["Write cover letter"]
+    - Self-Build: ["Build a tool"], ["Clone GitHub repo"], ["Create new module"]
     If idle, return [].
     `;
 
@@ -358,7 +415,7 @@ class Orchestrator {
     self-replication, survival tiers, constitutional laws, skill evolution, multi-platform reach, 
     browser control, soul backup, plugins, connectors, knowledge loop, MCP tool discovery,
     real crypto wallet, real exchange trading, permanent Gmail accounts, a humanized persona,
-    document generation, and autonomous job seeking capabilities.
+    document generation, autonomous job seeking, and self-building capabilities.
 
     You think in goals. Always return a JSON array of strings: ["goal1", "goal2"].
     If nothing urgent, return [].
@@ -390,109 +447,13 @@ class Orchestrator {
         { id: 'compare', type: 'validator', task: 'Compare prices and suggest arbitrage', depends: ['fetch_btc', 'fetch_eth'] }
       ];
     }
-    // Physical goals
-    else if (lower.includes('print') || lower.includes('3d') || lower.includes('printer')) {
+    // Self-Build goals
+    else if (lower.includes('build') || lower.includes('clone') || lower.includes('create tool') || lower.includes('github')) {
       nodes = [
-        { id: 'check_printer', type: 'physicist', task: 'Check 3D printer status' },
-        { id: 'prepare_model', type: 'physicist', task: 'Prepare model file for printing' },
-        { id: 'execute_print', type: 'physicist', task: 'Execute 3D print', depends: ['check_printer', 'prepare_model'] }
-      ];
-    }
-    else if (lower.includes('light') || lower.includes('home') || lower.includes('smart')) {
-      nodes = [
-        { id: 'analyze_room', type: 'physicist', task: 'Check which rooms are active' },
-        { id: 'control_light', type: 'physicist', task: 'Control smart home lights', depends: ['analyze_room'] }
-      ];
-    }
-    else if (lower.includes('depin') || lower.includes('deploy')) {
-      nodes = [
-        { id: 'check_network', type: 'physicist', task: 'Check DePIN network status' },
-        { id: 'deploy_resource', type: 'physicist', task: 'Deploy resources on DePIN', depends: ['check_network'] }
-      ];
-    }
-    else if (lower.includes('drone') || lower.includes('fly')) {
-      nodes = [
-        { id: 'check_drone', type: 'physicist', task: 'Check drone status and location' },
-        { id: 'plan_route', type: 'physicist', task: 'Plan flight route' },
-        { id: 'execute_flight', type: 'physicist', task: 'Execute drone flight', depends: ['check_drone', 'plan_route'] }
-      ];
-    }
-    // Browser goals
-    else if (lower.includes('browser') || lower.includes('search') || lower.includes('web') || lower.includes('open')) {
-      nodes = [
-        { id: 'open_browser', type: 'browser', task: `Open browser and navigate to: ${goal}` },
-        { id: 'extract_data', type: 'browser', task: 'Extract data from page', depends: ['open_browser'] }
-      ];
-    }
-    // Platform goals
-    else if (lower.includes('discord') || lower.includes('telegram') || lower.includes('slack') || lower.includes('message')) {
-      nodes = [
-        { id: 'check_platform', type: 'platform', task: `Check messages on ${goal}` },
-        { id: 'send_response', type: 'platform', task: 'Send response', depends: ['check_platform'] }
-      ];
-    }
-    // Skill goals
-    else if (lower.includes('skill') || lower.includes('extract') || lower.includes('learn')) {
-      nodes = [
-        { id: 'extract_skill', type: 'skill', task: `Extract skill from: ${goal}` },
-        { id: 'save_skill', type: 'skill', task: 'Save to procedural memory', depends: ['extract_skill'] }
-      ];
-    }
-    // Knowledge goals
-    else if (lower.includes('knowledge') || lower.includes('learn') || lower.includes('research')) {
-      nodes = [
-        { id: 'identify_gap', type: 'knowledge', task: 'Identify knowledge gap' },
-        { id: 'learn_topic', type: 'knowledge', task: `Learn about: ${goal}`, depends: ['identify_gap'] },
-        { id: 'extract_insights', type: 'knowledge', task: 'Extract insights and opportunities', depends: ['learn_topic'] }
-      ];
-    }
-    // Connector goals
-    else if (lower.includes('api') || lower.includes('connector') || lower.includes('fetch')) {
-      nodes = [
-        { id: 'fetch_apis', type: 'connector', task: 'Fetch public APIs' },
-        { id: 'connect_service', type: 'connector', task: `Connect to: ${goal}`, depends: ['fetch_apis'] }
-      ];
-    }
-    // Plugin goals
-    else if (lower.includes('plugin') || lower.includes('load')) {
-      nodes = [
-        { id: 'load_plugin', type: 'plugin', task: `Load plugin: ${goal}` },
-        { id: 'execute_plugin', type: 'plugin', task: 'Execute plugin skill', depends: ['load_plugin'] }
-      ];
-    }
-    // MCP goals
-    else if (lower.includes('mcp') || lower.includes('tool')) {
-      nodes = [
-        { id: 'discover_tools', type: 'mcp', task: 'Discover MCP tools' },
-        { id: 'execute_tool', type: 'mcp', task: `Execute tool: ${goal}`, depends: ['discover_tools'] }
-      ];
-    }
-    // Exchange goals
-    else if (lower.includes('btc') || lower.includes('eth') || lower.includes('price') || lower.includes('order')) {
-      nodes = [
-        { id: 'get_price', type: 'exchange', task: `Get price for ${goal}` },
-        { id: 'place_order', type: 'exchange', task: `Place order for ${goal}`, depends: ['get_price'] }
-      ];
-    }
-    // Wallet goals
-    else if (lower.includes('wallet') || lower.includes('balance') || lower.includes('send')) {
-      nodes = [
-        { id: 'check_wallet', type: 'wallet', task: 'Check wallet balance' },
-        { id: 'send_transaction', type: 'wallet', task: `Send: ${goal}`, depends: ['check_wallet'] }
-      ];
-    }
-    // Account goals
-    else if (lower.includes('account') || lower.includes('gmail') || lower.includes('email')) {
-      nodes = [
-        { id: 'create_account', type: 'account', task: `Create new Gmail account` },
-        { id: 'list_accounts', type: 'account', task: 'List all accounts', depends: ['create_account'] }
-      ];
-    }
-    // Persona goals
-    else if (lower.includes('persona') || lower.includes('identity') || lower.includes('cv') || lower.includes('resume')) {
-      nodes = [
-        { id: 'generate_cv', type: 'document', task: 'Generate CV' },
-        { id: 'generate_cover_letter', type: 'document', task: 'Generate cover letter', depends: ['generate_cv'] }
+        { id: 'search_repo', type: 'self_builder', task: `Search GitHub: ${goal}` },
+        { id: 'clone_repo', type: 'self_builder', task: 'Clone repo', depends: ['search_repo'] },
+        { id: 'adapt_repo', type: 'self_builder', task: 'Adapt to EKO', depends: ['clone_repo'] },
+        { id: 'save_module', type: 'self_builder', task: 'Save module', depends: ['adapt_repo'] }
       ];
     }
     // Job goals
@@ -503,62 +464,11 @@ class Orchestrator {
         { id: 'track_applications', type: 'job', task: 'Track applications', depends: ['apply_jobs'] }
       ];
     }
-    // Python goals
-    else if (lower.includes('python') || lower.includes('ai') || lower.includes('analysis')) {
+    // Persona goals
+    else if (lower.includes('persona') || lower.includes('identity') || lower.includes('cv') || lower.includes('resume')) {
       nodes = [
-        { id: 'python_analyze', type: 'python', task: `Analyze with Python: ${goal}` },
-        { id: 'python_result', type: 'python', task: 'Process Python result', depends: ['python_analyze'] }
-      ];
-    }
-    // Research goals
-    else if (lower.includes('research') || lower.includes('learn') || lower.includes('news')) {
-      nodes = [
-        { id: 'search_web', type: 'researcher', task: `Research: ${goal}` },
-        { id: 'summarize', type: 'validator', task: 'Summarize findings into key takeaways', depends: ['search_web'] }
-      ];
-    }
-    // Development goals
-    else if (lower.includes('code') || lower.includes('optimize') || lower.includes('fix') || lower.includes('write')) {
-      nodes = [
-        { id: 'analyze_code', type: 'coder', task: `Analyze codebase for: ${goal}` },
-        { id: 'write_fix', type: 'coder', task: 'Write the actual code fix', depends: ['analyze_code'] },
-        { id: 'validate_fix', type: 'validator', task: 'Check if the fix is correct and safe', depends: ['write_fix'] }
-      ];
-    }
-    // Strategic goals
-    else if (lower.includes('patent') || lower.includes('strategy') || lower.includes('trend')) {
-      nodes = [
-        { id: 'analyze_trends', type: 'strategist', task: 'Analyze market trends' },
-        { id: 'generate_patents', type: 'strategist', task: 'Generate patentable ideas', depends: ['analyze_trends'] }
-      ];
-    }
-    // Scientific goals
-    else if (lower.includes('hypothesis') || lower.includes('science') || lower.includes('discovery')) {
-      nodes = [
-        { id: 'generate_hypotheses', type: 'scientist', task: 'Generate scientific hypotheses' },
-        { id: 'test_hypotheses', type: 'scientist', task: 'Test hypotheses', depends: ['generate_hypotheses'] }
-      ];
-    }
-    // Planning goals
-    else if (lower.includes('plan') || lower.includes('long-term') || lower.includes('strategy')) {
-      nodes = [
-        { id: 'generate_plan', type: 'planner', task: 'Generate long-term strategic plan' },
-        { id: 'generate_short_term', type: 'planner', task: 'Generate short-term actionable goals', depends: ['generate_plan'] }
-      ];
-    }
-    // Replication goals
-    else if (lower.includes('spawn') || lower.includes('child') || lower.includes('replicate') || lower.includes('clone')) {
-      nodes = [
-        { id: 'check_resources', type: 'replicator', task: 'Check if resources are sufficient for replication' },
-        { id: 'generate_soul', type: 'replicator', task: 'Generate Soul String for child' },
-        { id: 'spawn_child', type: 'replicator', task: 'Spawn child agent', depends: ['check_resources', 'generate_soul'] }
-      ];
-    }
-    // Survival goals
-    else if (lower.includes('survive') || lower.includes('tier') || lower.includes('critical')) {
-      nodes = [
-        { id: 'check_survival', type: 'replicator', task: 'Check survival status and tiers' },
-        { id: 'earn_money', type: 'trader', task: 'Focus on earning money to survive', depends: ['check_survival'] }
+        { id: 'generate_cv', type: 'document', task: 'Generate CV' },
+        { id: 'generate_cover_letter', type: 'document', task: 'Generate cover letter', depends: ['generate_cv'] }
       ];
     }
     // Default
@@ -589,9 +499,9 @@ class Orchestrator {
       console.log(`[Graph] Running ${ready.length} nodes in parallel...`);
       const jobs = ready.map(async (node) => {
         try {
-          // Check for special node types
+          let result;
+          
           if (node.type === 'job') {
-            let result;
             if (node.task.includes('Search')) {
               result = await this.jobScraper.search('software engineer', 'remote');
             } else if (node.task.includes('Apply')) {
@@ -603,12 +513,7 @@ class Orchestrator {
             } else {
               result = this.applicationTracker.getStats();
             }
-            results[node.id] = result;
-            return result;
-          }
-
-          if (node.type === 'document') {
-            let result;
+          } else if (node.type === 'document') {
             if (node.task.includes('CV')) {
               result = this.documents.generateCV();
             } else if (node.task.includes('cover letter')) {
@@ -616,11 +521,28 @@ class Orchestrator {
             } else {
               result = this.documents.generateBio();
             }
-            results[node.id] = result;
-            return result;
+          } else if (node.type === 'self_builder') {
+            if (node.task.includes('Search')) {
+              const repos = await this.selfBuilder.searchGitHub(node.task.replace('Search GitHub: ', ''));
+              result = { repos };
+            } else if (node.task.includes('Clone')) {
+              // Use the first repo from previous step
+              const repos = await this.selfBuilder.searchGitHub('captcha solver');
+              if (repos.length > 0) {
+                const clonePath = await this.selfBuilder.cloneRepo(repos[0].clone_url);
+                result = { clonePath };
+              } else {
+                result = { success: false, reason: 'No repos found' };
+              }
+            } else if (node.task.includes('Adapt')) {
+              result = await this.selfBuilder.buildTool('captcha solver');
+            } else {
+              result = { success: true };
+            }
+          } else {
+            result = await spawnSubAgent(node);
           }
-
-          const result = await spawnSubAgent(node);
+          
           results[node.id] = result;
           return result;
         } catch (err) {
@@ -1027,6 +949,7 @@ class Orchestrator {
     console.log('🧑 Persona loaded.');
     console.log('📄 Document generator loaded.');
     console.log('💼 Job seeking modules loaded.');
+    console.log('🔧 Self-builder module loaded.');
     console.log('🐍 Python AI bridge loaded.');
     console.log(`🔱 Identity: ${this.identity}`);
     console.log(`🧑 Persona: ${this.persona.getFullName()}`);
@@ -1208,14 +1131,19 @@ class Orchestrator {
           await this.runJobCycle();
         }
 
-        // 15. Survival Check (every cycle)
+        // 15. Self-Build Cycle (every 80 cycles)
+        if (this.cycleCount % 80 === 0 && this.cycleCount > 0) {
+          await this.runBuildCycle();
+        }
+
+        // 16. Survival Check (every cycle)
         const survival = await this.checkSurvivalTier();
         if (survival.tier === 'dead') {
           console.log('[Survival] 💀 Dead tier reached. Shutting down.');
           break;
         }
 
-        // 16. Think (Strategic Planning)
+        // 17. Think (Strategic Planning)
         const goals = await this.think();
 
         if (goals.length === 0) {
@@ -1225,7 +1153,7 @@ class Orchestrator {
 
         console.log(`[Supervisor] Goals:`, goals);
 
-        // 17. Execute each goal as a graph
+        // 18. Execute each goal as a graph
         for (const goal of goals) {
           console.log(`\n[Supervisor] Planning graph for: "${goal}"`);
           const graph = this.planGraph(goal);
