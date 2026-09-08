@@ -24,13 +24,19 @@ export class ApplicationTracker {
 
   getApplications(status = null) {
     const apps = this.memory.search('application');
-    const parsed = apps.map(a => {
-      try {
-        return JSON.parse(a.content);
-      } catch {
-        return null;
-      }
-    }).filter(Boolean);
+    if (!apps || !Array.isArray(apps)) {
+      return [];
+    }
+    
+    const parsed = apps
+      .map(a => {
+        try {
+          return JSON.parse(a.content);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
 
     if (status) {
       return parsed.filter(a => a.status === status);
@@ -45,6 +51,10 @@ export class ApplicationTracker {
 
   updateStatus(id, newStatus, notes = '') {
     const apps = this.memory.search('application');
+    if (!apps || !Array.isArray(apps)) {
+      return null;
+    }
+    
     for (const app of apps) {
       try {
         const parsed = JSON.parse(app.content);
@@ -55,8 +65,6 @@ export class ApplicationTracker {
             notes: notes,
             timestamp: new Date().toISOString()
           });
-          // Update in memory (remove old, add new)
-          // In a real implementation, you'd have a proper update method
           console.log(`[ApplicationTracker] Updated ${id} to ${newStatus}`);
           return parsed;
         }
